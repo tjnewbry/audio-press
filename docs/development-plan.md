@@ -24,7 +24,9 @@ The project is built in sprints, each with one objective, a fixed scope, and exi
 | 1 | Architecture | Alpha | Done |
 | 2 | Foundation and extraction | Alpha | Done |
 | 3 | Cleanup, assembly, and lo output | Alpha | Done |
-| 4 | Hardening and Alpha release | Alpha | Done, awaiting owner verification of Alpha |
+| 4 | Hardening and Alpha release | Alpha | Done |
+
+Milestone Alpha was verified by the owner on 2026-10-17 and released as version 0.1.0.
 
 Scope changes during Alpha, all approved by the owner: the original five sprints were merged into four to reduce hand-offs; the code is one Gradle module with three packages rather than three modules; hyphen handling uses one simple rule; `--mode` waits for Bravo; and the garbled-text warning waits for Charlie.
 
@@ -40,7 +42,7 @@ Scope changes during Alpha, all approved by the owner: the original five sprints
 
 ## Milestone Alpha: Definition of Done
 
-| # | Criterion | Status at the end of Sprint 4 |
+| # | Criterion | Status |
 |---|-----------|-------------------------------|
 | 1 | `audio-press book.pdf` turns a text-based PDF into a lo transcript that matches [the lo format](usage.md#lo-format) exactly. | Met: the golden tests match exactly. |
 | 2 | Every rule in [cleanup-rules.md](cleanup-rules.md) works as documented, can be switched off where documented, and has unit tests, including a case where it must not fire. | Met: `CleanupRulesTest`, `AssemblerTest`, and an end-to-end `--disable` test. |
@@ -52,7 +54,7 @@ Scope changes during Alpha, all approved by the owner: the original five sprints
 | 8 | A 500-page text-based book converts in under 60 seconds. | Met: 576 pages in 5 seconds. |
 | 9 | The README explains how to build, install, and use the program, and the docs match the code. | Met. |
 | 10 | The version is `0.1.0`. | Met, ready for the owner to tag `v0.1.0`. |
-| 11 | The owner has checked real books from `local-samples/` and verified Alpha. | Pending. |
+| 11 | The owner has checked real books from `local-samples/` and verified Alpha. | Met: verified by the owner on 2026-10-17. |
 
 ## After Alpha (outline only)
 

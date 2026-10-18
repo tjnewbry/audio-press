@@ -5,7 +5,7 @@ A command-line Kotlin program that turns a PDF (usually a novel or textbook) int
 * **lo** output: a readable transcript that records which page each passage came from.
 * **hi** output (planned for Milestone Bravo): the lo transcript plus a map of where each word sits on the page, so a future app can start playback from a clicked word or highlight words as they are read.
 
-See [docs/objective-and-scope.md](docs/objective-and-scope.md) for the full objective and milestone plan. Version 0.1.0 completes **Milestone Alpha** (text-based PDFs, lo output), pending the owner's verification.
+See [docs/objective-and-scope.md](docs/objective-and-scope.md) for the full objective and milestone plan. Version 0.1.0 completes **Milestone Alpha** (text-based PDFs, lo output).
 
 ## Instructions for Build and Use
 
@@ -54,7 +54,7 @@ I found these websites useful in developing this software:
 
 The following items I plan to fix, improve, and/or add to this project in the future:
 
-* [ ] Milestone Alpha: text-based PDFs, lo output (built in version 0.1.0, awaiting verification)
+* [x] Milestone Alpha: text-based PDFs, lo output (version 0.1.0)
 * [ ] Milestone Bravo: text-based PDFs, hi output
 * [ ] Milestone Charlie: image-scan PDFs, lo output (OCR)
 * [ ] Milestone Delta: image-scan PDFs, hi output
