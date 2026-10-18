@@ -7,6 +7,8 @@ A command-line Kotlin program that turns a PDF (usually a novel or textbook) int
 
 See [docs/objective-and-scope.md](docs/objective-and-scope.md) for the full objective and milestone plan. Version 0.1.0 completes **Milestone Alpha** (text-based PDFs, lo output).
 
+[Software Demo Video](https://www.youtube.com/watch?v=v48KNSDY9Ic)
+
 ## Instructions for Build and Use
 
 Steps to build and/or run the software (on Windows, use `gradlew.bat` instead of `./gradlew`):
