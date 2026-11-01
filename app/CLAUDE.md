@@ -1,6 +1,6 @@
 # App: Instructions for Claude
 
-The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: not started.** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
+The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: Sprint A1 built (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
 
 ## Ownership
 
@@ -19,4 +19,22 @@ The Android app that turns PDF books into audiobooks, using the engine to make e
 
 * The Android SDK is at `%LOCALAPPDATA%\Android\Sdk`. Point Gradle at it with `sdk.dir` in `local.properties`, which git ignores.
 * Use the **Android CLI** (`android`, in `cmdline-tools\latest\bin` in the SDK) to create projects, build, run the emulator, install apps, inspect layouts, and search official Android documentation (`android docs`).
-* The app needs Kotlin 2.4 or newer and a Java 17 target to use the engine (see the end of [engine/docs/api.md](../engine/docs/api.md)). Use Gradle through the wrapper in this folder once the project exists. Android build outputs are already ignored by the root `.gitignore`.
+* The app needs Kotlin 2.4 or newer and a Java 17 target to use the engine (see the end of [engine/docs/api.md](../engine/docs/api.md)). Android build outputs are already ignored by the root `.gitignore`.
+
+## Layout
+
+A Gradle build with its own wrapper (`app/gradlew`). `settings.gradle.kts` includes the engine with `includeBuild("../engine")`. The application module is `audiopress/` (named for the product, so the path is not `app/app`); `pdf-source/` is the engine owner's module. Package `io.github.tjnewbry.audiopress.app`; minSdk 33, compileSdk and targetSdk 36. Versions are in `gradle/libs.versions.toml`.
+
+## Commands
+
+Run from `app/`. The engine's build needs JDK 25: the engine's Gradle toolchain finds it through `JAVA_HOME` or downloads it. Create `local.properties` with `sdk.dir=C\:/Users/<you>/AppData/Local/Android/Sdk` (forward slashes).
+
+```text
+./gradlew build assembleDebug      # compile, run unit tests and the ktlint check, build the debug APK
+./gradlew test                     # unit tests only
+./gradlew spotlessApply            # fix formatting
+adb install -r audiopress/build/outputs/apk/debug/audiopress-debug.apk
+adb shell am start -n io.github.tjnewbry.audiopress.app/.MainActivity
+```
+
+`adb` and the emulator are in the SDK (`platform-tools`, `emulator`). Start the emulator with `emulator -avd audio-press-api33 -no-snapshot-save -no-boot-anim`.

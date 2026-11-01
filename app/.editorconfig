@@ -1,0 +1,3 @@
+[*.kt]
+# Compose functions that draw UI are named like classes.
+ktlint_function_naming_ignore_when_annotated_with = Composable
