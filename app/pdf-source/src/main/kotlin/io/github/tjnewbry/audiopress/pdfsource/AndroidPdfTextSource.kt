@@ -43,6 +43,7 @@ class AndroidPdfTextSource private constructor(
     private val cleanup: List<File>,
 ) : TextSource {
     private val collector = WordCollector()
+    private var closed = false
 
     /** The title from the PDF's metadata (see [TextSource.title]), or null. */
     override val title: String? = readTitle(document)
@@ -83,7 +84,10 @@ class AndroidPdfTextSource private constructor(
             null
         }
 
+    /** Frees the PDF and deletes the temporary copy. Safe to call more than once. */
     override fun close() {
+        if (closed) return
+        closed = true
         try {
             document.close()
         } finally {

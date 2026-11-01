@@ -181,4 +181,42 @@ class ProgressTest {
     private companion object {
         val DefaultRulesCount = io.github.tjnewbry.audiopress.core.rules.DefaultRules.all.size
     }
+
+    @Test
+    fun `the source is not used again once reading has finished, so it can be closed early to free memory`() {
+        val inner = BookSource(4)
+        var closed = false
+        val source =
+            object : TextSource by inner {
+                override fun readPage(pageIndex: Int): SourcePage = inner.readPage(pageIndex)
+
+                override val pageCount: Int
+                    get() = if (closed) error("the source was used after it was closed") else inner.pageCount
+            }
+
+        val result =
+            Converter().convert(source, "book", ConversionOptions()) {
+                if (it.stage == ConversionStage.ANALYZING && it.done == 0) closed = true
+            }
+
+        assertTrue(closed)
+        assertEquals(4, result.document.pageCount)
+    }
+
+    @Test
+    fun `equal words share one string while pages are read, without changing any text`() {
+        val interner = WordInterner()
+        val a = String(charArrayOf('t', 'h', 'e'))
+        val b = String(charArrayOf('t', 'h', 'e'))
+        val long = "x".repeat(40)
+
+        assertTrue(interner.intern(a) === interner.intern(b), "equal words become the same object")
+        assertEquals("the", interner.intern(b))
+        assertEquals(long, interner.intern(long))
+        val page =
+            SourcePage(1, 100f, 100f, listOf(SourceWord(a, Box(0f, 0f, 1f, 1f), 1f, 10f), SourceWord(b, Box(2f, 0f, 3f, 1f), 1f, 10f)))
+        val words = TextNormalizer.normalize(page, interner).words
+        assertTrue(words[0].text === words[1].text)
+        assertEquals(listOf("the", "the"), words.map { it.text })
+    }
 }

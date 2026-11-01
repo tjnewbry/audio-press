@@ -31,11 +31,16 @@ object TextNormalizer {
      * a word (a footnote marker such as "summer." followed by a superscript 3) are split off into their own word that joins the
      * previous one, so the `footnote-markers` rule can remove them.
      */
-    fun normalize(page: SourcePage): SourcePage =
+    fun normalize(page: SourcePage): SourcePage = normalize(page, null)
+
+    internal fun normalize(
+        page: SourcePage,
+        interner: WordInterner?,
+    ): SourcePage =
         page.copy(
             words =
                 page.words.flatMap { word ->
-                    val text = normalize(word.text)
+                    val text = normalize(word.text).let { interner?.intern(it) ?: it }
                     if (text.isEmpty()) emptyList() else splitSuperscripts(word.copy(text = text))
                 },
         )

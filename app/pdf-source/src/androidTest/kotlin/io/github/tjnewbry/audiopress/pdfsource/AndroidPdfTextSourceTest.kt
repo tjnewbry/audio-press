@@ -172,6 +172,17 @@ class AndroidPdfTextSourceTest {
     }
 
     @Test
+    fun closingTwiceIsHarmless() {
+        val file = pdf("twice.pdf") { page { text("Body", x = 72f, y = 100f) } }
+        val source = AndroidPdfTextSource.open(context, Uri.fromFile(file), displayName = "twice.pdf")
+
+        source.close()
+        source.close()
+
+        assertEquals(0, File(context.cacheDir, "pdf-source").listFiles { f -> f.name.endsWith(".pdf") }?.size ?: 0)
+    }
+
+    @Test
     fun aMissingContentUriIsReportedAsNotFound() {
         val missing = Uri.fromFile(File(folder.root, "gone.pdf"))
 

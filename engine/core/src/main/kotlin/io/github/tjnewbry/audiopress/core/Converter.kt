@@ -35,8 +35,9 @@ class Converter(
         cancellation: CancellationToken? = null,
         onProgress: (ConversionProgress) -> Unit = {},
     ): ConversionResult {
-        val pages = options.pages.resolve(source.pageCount)
-        if (pages.isEmpty()) throw NoPagesSelectedException(options.pages.toString(), source.pageCount)
+        val pageCount = source.pageCount
+        val pages = options.pages.resolve(pageCount)
+        if (pages.isEmpty()) throw NoPagesSelectedException(options.pages.toString(), pageCount)
         onProgress(ConversionProgress(ConversionStage.READING, 0, pages.size))
         val layout =
             LayoutReader.read(source, pages, cancellation) { done ->
@@ -48,7 +49,7 @@ class Converter(
         val steps = enabled.size + 1 // each rule, then the assembly
         var step = 0
         onProgress(ConversionProgress(ConversionStage.ANALYZING, step, steps))
-        val document = LayoutDocument(layout, source.pageCount)
+        val document = LayoutDocument(layout, pageCount)
         var removals = Removals.NONE
         for (rule in enabled) {
             cancellation?.throwIfCancelled()

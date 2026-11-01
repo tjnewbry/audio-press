@@ -31,7 +31,7 @@ Work so far:
 | 4 | `--report` lists every removed page, line, and word, plus all warnings. | Met. Text rewrites (shortened URLs, garbled scan marks) are not removals and are documented as not listed. |
 | 5 | Scanned, encrypted, damaged, and missing inputs fail with the documented exit codes; pages without text produce warnings. | Met. |
 | 6 | Golden tests cover headers and footers, page numbers, footnotes and markers, hyphenation, paragraphs across pages, headings, URLs, rotated text, and the copyright and contents rules. | Met: the generated mini book covers all of them. |
-| 7 | `./gradlew build` passes from a clean checkout, and CI runs the same command. | Met at release: 69 tests passed locally and in GitHub Actions. The workflow was moved to `engine/` afterward and runs again on the next push. |
+| 7 | `./gradlew build` passes from a clean checkout, and CI runs the same command. | Met at release: 69 tests passed locally and in GitHub Actions. The workflow now lives in `.github/workflows/engine.yml`, builds only `engine/`, and runs `./gradlew build` on pushes and pull requests that touch the engine. |
 | 8 | A 500-page text-based book converts in under 60 seconds. | Met: 576 pages in 5 seconds. |
 | 9 | The README explains how to build, install, and use the program, and the docs match the code. | Met. |
 | 10 | The version is `0.1.0`. | Met. |
@@ -43,3 +43,18 @@ Work so far:
 * **Milestone Charlie (image-scan PDFs, lo output):** choose an OCR engine, add an OCR text source behind the existing `TextSource` port, and tune cleanup for OCR noise.
 * **Milestone Delta (image-scan PDFs, hi output):** use OCR word positions in the hi writer, and measure word-position accuracy on scanned pages.
 * **Possible improvements:** multi-column reading order, drop caps, reading footnotes after their paragraph, keeping hyphens in compounds split across lines, a garbled-text warning, and splitting paragraphs longer than Android's TTS input limit.
+
+## Engine work for the app (while Bravo, Charlie, and Delta are paused)
+
+The app prototype needed a few things from the engine. None of them change the Alpha behavior, and the golden tests are unchanged.
+
+| Work | What it delivered |
+|------|-------------------|
+| Android-portable `core` | Checked every JDK call and regex against Android 13 (API 33). Regexes use `[0-9]` instead of `\d`; `ArchitectureTest` now allows only Kotlin, `core`'s own package, and `java.util.Locale`, and flags regex syntax that differs on Android's ICU engine. See [api.md](api.md#android-compatibility). |
+| Android PDF reader | `AndroidPdfTextSource` in `app/pdf-source` implements the port with PdfBox-Android and gives the same transcript as the desktop program on a 576-page book. |
+| Progress and cancel | `Converter.convert` takes an optional `CancellationToken` and `onProgress` callback. See [api.md](api.md#progress-and-cancellation). |
+| Faster import | Per-word regexes skipped when they cannot match, backwards line-group search, and zone-only header signatures: engine analysis on a 576-page book went from 5.0 to 1.6 seconds on the emulator, with identical output. |
+| `SpeechChunker` | Splits a transcript into utterances under Android's TTS limit and maps TTS offsets back to words, for the live player and Bake. See [api.md](api.md#speaking-a-transcript). |
+| `TextSource.title` | The document title (information dictionary, then XMP), cleaned of placeholders such as "Untitled", for the library screen. |
+| Bake groundwork | `app/bake` turns utterances (or plain `BakeItem`s) into resumable WAV files and a manifest; no engine change. |
+| Large books (in progress, sprint A5) | Measured memory on the emulator, shared word strings to cut layout memory by about a fifth, a `TextSource` that is no longer used after reading so it can be closed early, and the figures in [api.md](api.md#memory). Streaming or windowed layout is the next step if a larger limit is needed, and would be a larger change. |

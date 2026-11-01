@@ -64,9 +64,11 @@ flowchart TD
 The main types, simplified from the code:
 
 ```kotlin
-// Port: implemented by PdfBoxTextSource now, and by an OCR source in Milestone Charlie.
+// Port: implemented by PdfBoxTextSource (desktop), AndroidPdfTextSource (app/pdf-source, PdfBox-Android),
+// and by an OCR source in Milestone Charlie.
 interface TextSource : AutoCloseable {
     val pageCount: Int
+    val title: String? get() = null                           // the document's own title, cleaned; null when absent or junk
     fun readPage(pageIndex: Int): SourcePage                 // 1-based physical page number
 }
 data class SourcePage(val index: Int, val width: Float, val height: Float, val words: List<SourceWord>)
@@ -87,16 +89,23 @@ data class Removal(val rule: RuleId, val target: Target, val text: String, val r
 
 // Transcript: logical, crosses page boundaries.
 data class Transcript(val segments: List<Segment>)
-data class Segment(val kind: SegmentKind, val tokens: List<Token>)          // PARAGRAPH or HEADING
+data class Segment(val kind: SegmentKind, val tokens: List<Token>)          // PARAGRAPH or HEADING; text joins the tokens
 data class Token(val text: String, val spaceBefore: Boolean, val spans: List<Span>)
 data class Span(val page: Int, val box: Box)                               // two spans for a word hyphenated across lines
 
 // Entry point and output.
 class Converter(rules: List<CleanupRule> = DefaultRules.all) {
-    fun convert(source: TextSource, sourceName: String, options: ConversionOptions): ConversionResult
+    fun convert(
+        source: TextSource, sourceName: String, options: ConversionOptions,
+        cancellation: CancellationToken? = null,                 // cancel() from another thread throws ConversionCancelledException
+        onProgress: (ConversionProgress) -> Unit = {},           // per page while reading, then per rule
+    ): ConversionResult
 }
+class SpeechChunker(val maxChars: Int = 3900) { fun chunk(transcript: Transcript): List<Utterance> }   // for text to speech
 interface TranscriptWriter { fun write(transcript: Transcript, out: Appendable) }
 ```
+
+*The snippet is simplified. [api.md](api.md) is the source of truth for the types an app may use, including `SpeechChunker`, progress and cancellation, and `TextSource.title`.*
 
 **Coordinates.** All positions use display space: PDF points (1/72 inch), origin at the top-left of the page as a viewer shows it, y increasing downward. The PDFBox adapter converts into this space, so the core and every output format share one convention.
 
@@ -146,7 +155,7 @@ A 500-page book should convert in under 60 seconds; the sample books convert at 
 The app depends on the `core` module only, through the API in [api.md](api.md). What it needs to know:
 
 * **Apache PDFBox 3 does not run on Android**, so the app cannot use the `pdfbox` module. It supplies its own `TextSource`, `AndroidPdfTextSource` in `app/pdf-source`, which ports the same word logic to the community PDFBox 2.0 port (PdfBox-Android). On a 576-page book it produces byte-for-byte the same transcript as the desktop program.
-* **Memory.** The layout of every selected page is kept in memory, about 100 MB per 1,000 pages. That is comfortable on a desktop JVM and has not been measured on a phone. A sliding window of pages is possible if it matters.
+* **Memory.** The layout of every selected page is kept in memory until the conversion ends. Measured on the Android 13 emulator (192 MB heap): a 1,000-page book peaks near 100 MB and about 3,000 pages is the limit; see [api.md](api.md#memory). A sliding window of pages is possible if that is not enough.
 * **Word positions are approximate.** Each word's box is estimated from its font size (80% of it above the baseline, 20% below), not from the font's real metrics. That is fine for cleanup but not accurate enough to highlight words as they are read. Milestone Bravo needs exact boxes.
 * **Output limits.** Equations read poorly, and scanned books with an OCR text layer can contain OCR errors; see [Known limits](#known-limits-in-alpha).
 * **Android compatibility.** `core` was checked against Android API 33 and runs in the app on an emulator; the rules for keeping it that way are in [api.md](api.md#android-compatibility). Conversion takes a while on a phone, so `Converter.convert` reports progress and can be cancelled ([api.md](api.md#progress-and-cancellation)).

@@ -70,6 +70,7 @@ val result =
 
 * **Reports.** `READING` reports `done` of `total` pages (`total` is the number of *selected* pages), once at 0 and then after every page. `ANALYZING` then reports one step per enabled cleanup rule plus one for the paragraph assembly. Within a stage `done` only increases and the last report has `done == total`. `fraction` (0 to 1) gives reading 95 percent of the bar, because it is almost all the time.
 * **Threading.** `onProgress` runs on the thread that called `convert`, so hop to the main thread before touching the UI, and keep it quick: it delays the conversion. If it throws, the conversion stops with that exception. `CancellationToken.cancel()` is safe from any thread. A token cancels once; make a new one for the next conversion.
+* **Closing the source early.** Once the first `ANALYZING` report arrives the engine never touches the `TextSource` again, so the app may close it right there (for example `if (p.stage == ConversionStage.ANALYZING && p.done == 0) source.close()`) to free the PDF reader's memory (about 35 MB on Android) before the analysis needs its peak. `close()` is safe to call twice, so a surrounding `use {}` is fine.
 * **Cancelling.** The token is checked before every page and before every rule and the assembly, so a cancel takes effect within one page read (typically milliseconds). `convert` then throws `ConversionCancelledException` and returns nothing: there is no partial result. Nothing else is left behind, because `Converter` keeps no state. The `TextSource` stays open and is still the caller's to `close()`. Once the last report (`ANALYZING`, `done == total`) is sent, the result is already complete and a late `cancel()` has no effect.
 
 ## Speaking a transcript
@@ -97,6 +98,10 @@ val total = result.transcript.estimatedSeconds(wordsPerMinute = 170)
 * **Highlighting.** `wordAt` gives the word containing the offset TTS reports; an offset on a space gives the next word. Offsets are UTF-16 indexes, which is what Android reports. Word boxes on the page are not part of this; they arrive with Milestone Bravo.
 * **Duration.** The engine provides a simple estimate, `words * 60 / wordsPerMinute` (`SpeechChunker.estimatedSeconds`, `Utterance.estimatedSeconds`, `Transcript.estimatedSeconds`; default 170 words per minute). The real time depends on the voice and the speech rate the app sets, so the app should divide by its rate multiplier and may replace the estimate with measured time once utterances have been spoken.
 * `SpeechChunker` holds no state and is cheap: chunking a 180,000-word book is a single pass over the text.
+
+## Memory
+
+The engine keeps the layout of every selected page until the conversion ends, because the rules compare pages. Measured on the Android 13 emulator with its default 192 MB heap, for generated pages of about 420 words: the PDF reader (PdfBox-Android) holds about 35 MB whatever the book size, the layout about 55 KB per page, and the finished transcript about 30 KB per page more. So a 1,000-page book (about 420,000 words) peaks near 100 MB, and the largest book that converts is roughly 3,000 pages (1.25 million words) with the source closed early (see above), about 2,700 without. A phone with a larger heap, or `android:largeHeap`, goes further. Equal words share one string while pages are read, which saves about a fifth of the layout memory. Keep only `result.transcript` once the conversion is done: `ConversionResult.document` holds the whole layout.
 
 ## Implementing a `TextSource`
 
@@ -151,4 +156,4 @@ includeBuild("../engine")
 dependencies { implementation("io.github.tjnewbry.audiopress:core:0.1.0") }
 ```
 
-This has not been tried yet, because the app does not exist. The engine is compiled to Java 17 bytecode with Kotlin 2.4, so the app needs Kotlin 2.4 or newer to read it and a Java 17 target.
+This is how the app (`app/`) consumes the engine today: Gradle substitutes the included build's `:core` project for those coordinates, and the app runs on Android 13 (API 33) and up. The engine is compiled to Java 17 bytecode with Kotlin 2.4, so the app needs Kotlin 2.4 or newer to read it and a Java 17 target. See [Android compatibility](#android-compatibility) for the rules that keep `core` running there.
