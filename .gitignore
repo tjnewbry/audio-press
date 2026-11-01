@@ -1,13 +1,11 @@
 # Based on GitHub's gitignore templates (Gradle, Java, Kotlin, JetBrains,
 # VisualStudioCode, Eclipse, macOS, Windows, Linux).
 
-### Local-only documentation ###
-# Notes, drafts and research that stay on this machine and are never committed.
-/local-docs/
-
-### Local-only sample inputs ###
-# Real PDFs used for manual testing. Books may be copyrighted, so never commit them.
-/local-samples/
+### Local-only material (matched at any depth, so any folder can have its own) ###
+# Notes, drafts, and research that stay on this machine.
+local-docs/
+# Real PDFs for manual testing. Books may be copyrighted, so never commit them.
+local-samples/
 
 ### Secrets / local environment ###
 .env
@@ -17,7 +15,7 @@
 ### Gradle ###
 .gradle/
 **/build/
-!src/**/build/
+!**/src/**/build/
 gradle-app.setting
 .gradletasknamecache
 local.properties
@@ -25,11 +23,18 @@ local.properties
 ### Kotlin ###
 .kotlin/
 
+### Android (for the app) ###
+*.apk
+*.aab
+.cxx/
+.externalNativeBuild/
+captures/
+
 ### Java / JVM ###
 *.class
 *.log
 *.jar
-!gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
 *.war
 *.ear
 *.nar
