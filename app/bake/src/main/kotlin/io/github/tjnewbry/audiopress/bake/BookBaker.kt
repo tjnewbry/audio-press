@@ -21,6 +21,18 @@ interface SpeechSynthesizer {
     ): SynthesisResult
 }
 
+/**
+ * One piece of text to bake, with where it sits in the book: [text] is characters `[start, end)` of paragraph (segment)
+ * number [segmentIndex], starting on [page]. The engine's `Utterance` has the same fields.
+ */
+data class BakeItem(
+    val text: String,
+    val segmentIndex: Int,
+    val start: Int,
+    val end: Int,
+    val page: Int,
+)
+
 /** [done] of [total] utterances are baked, counting the ones that were already baked by an earlier run. */
 data class BakeProgress(
     val done: Int,
@@ -66,6 +78,37 @@ class BookBaker(
         settingsKey: String = "",
         cancellation: CancellationToken? = null,
         onProgress: (BakeProgress) -> Unit = {},
+    ): BakedBook =
+        bakeAll(
+            utterances.map {
+                BakeItem(it.text, it.segmentIndex, it.start, it.end, it.page)
+            },
+            folder,
+            settingsKey,
+            cancellation,
+            onProgress,
+        )
+
+    /**
+     * The same as [bake] for text that did not come from the engine's `SpeechChunker`, such as an app's own splitter
+     * over stored paragraphs. The files, the manifest, and the fingerprint are exactly what [bake] would make for
+     * [BakeItem]s with the same fields.
+     */
+    @JvmName("bakeItems")
+    fun bake(
+        items: List<BakeItem>,
+        folder: File,
+        settingsKey: String = "",
+        cancellation: CancellationToken? = null,
+        onProgress: (BakeProgress) -> Unit = {},
+    ): BakedBook = bakeAll(items, folder, settingsKey, cancellation, onProgress)
+
+    private fun bakeAll(
+        utterances: List<BakeItem>,
+        folder: File,
+        settingsKey: String,
+        cancellation: CancellationToken?,
+        onProgress: (BakeProgress) -> Unit,
     ): BakedBook {
         require(utterances.isNotEmpty()) { "there is nothing to bake" }
         if (!folder.isDirectory && !folder.mkdirs()) throw IOException("cannot create ${folder.path}")
@@ -93,7 +136,7 @@ class BookBaker(
     /** Synthesizes into a temporary file and renames it, trying twice before giving up. Returns the duration. */
     private fun synthesizeOne(
         index: Int,
-        utterance: Utterance,
+        utterance: BakeItem,
         folder: File,
         name: String,
         cancellation: CancellationToken?,
@@ -158,7 +201,7 @@ class BookBaker(
 
         /** A short hash of what the audio is made from, so a changed book or voice is not mixed with old files. */
         internal fun fingerprint(
-            utterances: List<Utterance>,
+            utterances: List<BakeItem>,
             settingsKey: String,
         ): String {
             val digest = MessageDigest.getInstance("SHA-256")

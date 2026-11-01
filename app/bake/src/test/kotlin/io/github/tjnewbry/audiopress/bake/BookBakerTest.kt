@@ -241,7 +241,7 @@ class BookBakerTest {
 
     @Test
     fun `an empty list is rejected`() {
-        assertFailsWith<IllegalArgumentException> { BookBaker(FakeSynthesizer()).bake(emptyList(), folder()) }
+        assertFailsWith<IllegalArgumentException> { BookBaker(FakeSynthesizer()).bake(emptyList<Utterance>(), folder()) }
     }
 
     @Test
@@ -253,5 +253,45 @@ class BookBakerTest {
         BookBaker(FakeSynthesizer()).bake(utterances(2), folder(), settingsKey = "b")
 
         assertEquals("mine", File(folder(), "notes.txt").readText())
+    }
+
+    @Test
+    fun `plain items bake exactly like the engine utterances with the same fields`() {
+        val utterances = utterances(4)
+        val items = utterances.map { BakeItem(it.text, it.segmentIndex, it.start, it.end, it.page) }
+
+        val fromUtterances = BookBaker(FakeSynthesizer()).bake(utterances, File(temp.root, "a"))
+        val fromItems = BookBaker(FakeSynthesizer()).bake(items, File(temp.root, "b"))
+
+        assertEquals(fromUtterances.fingerprint, fromItems.fingerprint)
+        assertEquals(fromUtterances.utterances, fromItems.utterances)
+        assertEquals(File(temp.root, "a/manifest.txt").readText(), File(temp.root, "b/manifest.txt").readText())
+    }
+
+    @Test
+    fun `a bake started with utterances resumes with the same text as items`() {
+        val utterances = utterances(4)
+        val token = CancellationToken()
+        val first = FakeSynthesizer().apply { onSynthesize = { if (spoken.size == 2) token.cancel() } }
+        assertFailsWith<BakeCancelledException> { BookBaker(first).bake(utterances, folder(), cancellation = token) }
+        val second = FakeSynthesizer()
+
+        BookBaker(second).bake(utterances.map { BakeItem(it.text, it.segmentIndex, it.start, it.end, it.page) }, folder())
+
+        assertEquals(utterances.drop(1).map { it.text }, second.spoken)
+    }
+
+    @Test
+    fun `items report progress and honour cancellation like utterances`() {
+        val items = List(3) { BakeItem("Paragraph number $it.", it, 0, 20, it + 1) }
+        val reports = mutableListOf<BakeProgress>()
+
+        BookBaker(FakeSynthesizer()).bake(items, folder()) { reports += it }
+
+        assertEquals((0..3).map { BakeProgress(it, 3) }, reports)
+        assertFailsWith<BakeCancelledException> {
+            BookBaker(FakeSynthesizer()).bake(items, File(temp.root, "c"), cancellation = CancellationToken().apply { cancel() })
+        }
+        assertFailsWith<IllegalArgumentException> { BookBaker(FakeSynthesizer()).bake(emptyList<BakeItem>(), File(temp.root, "d")) }
     }
 }
