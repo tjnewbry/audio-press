@@ -14,7 +14,7 @@ Version 0.1.0 completes **Milestone Alpha** (text-based PDFs, lo output).
 | Folder | What it is |
 |--------|-----------|
 | [engine/](engine/) | The PDF-to-transcript engine and command-line program. Self-contained, with its own docs, build, and tests. See [engine/docs/objective-and-scope.md](engine/docs/objective-and-scope.md) for the objective and milestone plan. |
-| [app/](app/) | The Android app. Not started. |
+| [app/](app/) | The Android app (Android 13+): import a PDF, keep a library of processed books, and play them as audiobooks with live captions. Not started; see [app/docs/objective-and-scope.md](app/docs/objective-and-scope.md). |
 
 ## Instructions for Build and Use
 

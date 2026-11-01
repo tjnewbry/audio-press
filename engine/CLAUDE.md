@@ -13,6 +13,7 @@ The engine turns text-based PDFs into clean transcripts for text-to-speech. This
 * Nothing in `engine/` may refer to `../app` or to Android. CI builds the engine alone, so a hidden dependency fails the build.
 * The app uses only the supported API in [docs/api.md](docs/api.md). Do not change it silently: update that guide in the same change.
 * Change requests from the app come to the engine owner. Changes land here, with tests.
+* The engine owner also owns `app/pdf-source/`, the Android PDF reader. It implements the engine's `TextSource` (contract in [docs/api.md](docs/api.md)) and lives in the app's build, because it depends on Android. `engine/` never depends on it.
 
 ## Milestones
 

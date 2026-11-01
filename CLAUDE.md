@@ -5,7 +5,8 @@ Audio Press turns PDF books into clean text for text-to-speech, and is meant to 
 | Folder | What it is | Owner | Read first |
 |--------|-----------|-------|------------|
 | `engine/` | The PDF-to-transcript engine and command-line program (Kotlin). Self-contained; Milestone Alpha is done. | Engine owner | [engine/CLAUDE.md](engine/CLAUDE.md) |
-| `app/` | The Android app. Not started. | App developer | [app/CLAUDE.md](app/CLAUDE.md) |
+| `app/` | The Android app. Not started; goal and scope in [app/docs/objective-and-scope.md](app/docs/objective-and-scope.md). | App developer | [app/CLAUDE.md](app/CLAUDE.md) |
+| `app/pdf-source/` | The Android PDF reader, which implements the engine's `TextSource`. Part of the app's build. | Engine owner | [app/CLAUDE.md](app/CLAUDE.md) |
 | Root files (`README.md`, `CLAUDE.md`, `.gitignore`, `.gitattributes`, `.editorconfig`, `LICENSE`, `.github/`) | Shared by both | The main session, or whoever tjnewbry assigns | This file |
 
 ## Boundaries
