@@ -12,7 +12,7 @@ data class SamplePage(
 )
 
 /**
- * A stand-in for the Android PDF reader (which does not exist yet): a two-page book of original text,
+ * A stand-in for the Android PDF reader, so unit tests run on the JVM: a two-page book of original text,
  * laid out like a printed page, so the engine's real pipeline runs on it. Boxes are estimated from the
  * font size, as the engine's own are. Each page ends with a printed page number, which the engine removes.
  */

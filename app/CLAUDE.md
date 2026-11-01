@@ -1,6 +1,6 @@
 # App: Instructions for Claude
 
-The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: Sprints A1, A2 and A3 built (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
+The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: sprints A1 to A5 are built; the owner's check on a real phone with real books is outstanding (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
 
 ## Ownership
 
@@ -11,7 +11,7 @@ The Android app that turns PDF books into audiobooks, using the engine to make e
 
 ## Rules
 
-* **Do not add a PDF library or any other dependency** without tjnewbry's approval. How PDFs are read on Android is decided only after the research is done.
+* **Do not add any dependency** without tjnewbry's approval.
 * **Sprints and milestones are gated** as in the root [CLAUDE.md](../CLAUDE.md). Work only within what tjnewbry has authorized, and report back when a step is done.
 * **Before editing, propose a plan** and wait for tjnewbry's OK.
 * **Test on the emulator** and say how you verified each change. tjnewbry tests on a real phone.
@@ -24,7 +24,7 @@ The Android app that turns PDF books into audiobooks, using the engine to make e
 
 ## Layout
 
-A Gradle build with its own wrapper (`app/gradlew`). `settings.gradle.kts` includes the engine with `includeBuild("../engine")`. The application module is `audiopress/` (named for the product, so the path is not `app/app`); `pdf-source/` is the engine owner's module. Package `io.github.tjnewbry.audiopress.app`; minSdk 33, compileSdk and targetSdk 36. Versions are in `gradle/libs.versions.toml`.
+A Gradle build with its own wrapper (`app/gradlew`). `settings.gradle.kts` includes the engine with `includeBuild("../engine")`. The application module is `audiopress/` (named for the product, so the path is not `app/app`); `pdf-source/` (reads PDFs with PdfBox-Android) and `bake/` (turns utterances into audio files) are the engine owner's modules for now. Package `io.github.tjnewbry.audiopress.app`; minSdk 33, compileSdk and targetSdk 36. Versions are in `gradle/libs.versions.toml`.
 
 ## Commands
 
