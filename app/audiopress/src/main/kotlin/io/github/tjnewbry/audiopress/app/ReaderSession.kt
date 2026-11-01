@@ -34,11 +34,11 @@ class ReaderSession(
     context: Context,
     val book: Book,
     val paragraphs: List<StoredParagraph>,
+    private val utterances: List<Utterance>,
     initialPosition: Position?,
     private val saveProgress: (Position) -> Unit,
     val bake: BookBakeController,
 ) {
-    private val utterances = speechUtterances(paragraphs)
     private val estimator = TimeEstimator(utterances.map { it.words.size })
     private val saver = Executors.newSingleThreadExecutor { Thread(it, "save-progress") }
     private val main = Handler(Looper.getMainLooper())
@@ -91,16 +91,17 @@ class ReaderSession(
         bakeState = bake.state
     }
 
-    /** The paragraph being read, or the one where reading resumes. */
-    val currentParagraph: Int get() = utterances.getOrNull(player.utterance)?.paragraph ?: 0
+    /** The lines of the reader: one per utterance, which is a whole paragraph unless it was very long. */
+    val lines: List<Utterance> get() = utterances
 
-    /** The current word as a range of characters in the current paragraph's text. Null in baked mode, which has no word timing. */
+    /** The line being read, or the one where reading resumes. */
+    val currentLine: Int get() = player.utterance
+
+    /** The current word as a range of characters in the current line. Null in baked mode, which has no word timing. */
     val currentWord: IntRange?
         get() {
-            if (mode == PlaybackMode.BAKED) return null
-            val utterance = utterances.getOrNull(player.utterance) ?: return null
-            if (player.status == PlaybackStatus.STOPPED || player.wordEnd <= player.wordStart) return null
-            return (utterance.start + player.wordStart) until (utterance.start + player.wordEnd)
+            if (mode == PlaybackMode.BAKED || player.status == PlaybackStatus.STOPPED || player.wordEnd <= player.wordStart) return null
+            return player.wordStart until player.wordEnd
         }
 
     /** Time before the current point: real in baked mode, estimated in live mode (from word counts, refined as it plays). */
@@ -118,9 +119,25 @@ class ReaderSession(
         switcher?.toggle()
     }
 
-    /** Starts reading from the beginning of paragraph [index]. */
+    /** Starts reading from the beginning of line [index]. */
     fun jumpTo(index: Int) {
-        switcher?.jumpToParagraph(index)
+        val line = utterances.getOrNull(index) ?: return
+        switcher?.jumpTo(Position(line.paragraph, line.start))
+    }
+
+    var preferLive: Boolean by mutableStateOf(false)
+        private set
+
+    /** Chooses live speech or baked audio for the next time playback starts. Pauses what is playing, so the change is clean. */
+    fun choosePlayback(live: Boolean) {
+        switcher?.pause()
+        preferLive = live
+        switcher?.preferLive = live
+    }
+
+    /** Pauses (and so saves the position); used when the app goes to the background. */
+    fun pausePlayback() {
+        switcher?.pause()
     }
 
     fun startBake() = bake.start()

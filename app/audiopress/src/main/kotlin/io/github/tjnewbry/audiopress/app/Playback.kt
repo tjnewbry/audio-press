@@ -13,8 +13,8 @@ interface Playback {
 
     fun pause()
 
-    /** Starts playing from the beginning of [paragraph] (or the next one with text). */
-    fun jumpToParagraph(paragraph: Int)
+    /** Starts playing from the utterance that holds [position] (the next one, if that paragraph has no text). */
+    fun jumpTo(position: Position)
 
     /** Stops if playing, and sets the place where [play] will continue, without starting. */
     fun moveTo(position: Position)
@@ -35,6 +35,9 @@ class SwitchingPlayback(
     var mode: PlaybackMode = if (baked() != null) PlaybackMode.BAKED else PlaybackMode.LIVE
         private set
 
+    /** When true the book is read with live speech even though baked audio exists; takes effect when playback next starts. */
+    var preferLive: Boolean = false
+
     private val active: Playback get() = if (mode == PlaybackMode.BAKED) baked() ?: live else live
 
     val state: PlayerState get() = active.state
@@ -49,15 +52,15 @@ class SwitchingPlayback(
         }
     }
 
-    fun jumpToParagraph(paragraph: Int) {
+    fun jumpTo(position: Position) {
         chooseMode()
-        active.jumpToParagraph(paragraph)
+        active.jumpTo(position)
     }
 
     fun pause() = active.pause()
 
     private fun chooseMode() {
-        val wanted = if (baked() != null) PlaybackMode.BAKED else PlaybackMode.LIVE
+        val wanted = if (baked() != null && !preferLive) PlaybackMode.BAKED else PlaybackMode.LIVE
         if (wanted == mode) return
         val from = active
         val where = from.position

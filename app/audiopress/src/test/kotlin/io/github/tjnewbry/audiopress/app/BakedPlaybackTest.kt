@@ -80,18 +80,18 @@ class BakedPlaybackTest {
         assertEquals(10_000L, player.totalMs)
         assertEquals(0L, player.elapsedMs)
 
-        player.jumpToParagraph(1) // second clip, which starts after the first one's 1 s
+        player.jumpTo(Position(1, 0)) // second clip, which starts after the first one's 1 s
         clipPlayer.positionMs = 500
         assertEquals(1500L, player.elapsedMs)
 
-        player.jumpToParagraph(2) // fourth clip, after 1 + 2 + 3 s
+        player.jumpTo(Position(2, 0)) // fourth clip, after 1 + 2 + 3 s
         assertEquals(6000L, player.elapsedMs)
     }
 
     @Test
     fun `pause keeps the point in the clip and resume continues from it`() {
         val player = baked()
-        player.jumpToParagraph(1)
+        player.jumpTo(Position(1, 0))
         clipPlayer.positionMs = 1200
         player.pause()
         assertEquals(PlaybackStatus.PAUSED, player.state.status)
@@ -110,7 +110,7 @@ class BakedPlaybackTest {
         clipPlayer.onCompleted?.invoke(stale)
         assertEquals(PlayerState(PlaybackStatus.PAUSED, 0), player.state)
 
-        player.jumpToParagraph(2)
+        player.jumpTo(Position(2, 0))
         clipPlayer.onCompleted?.invoke(stale)
         assertEquals(3, player.state.utterance)
     }
@@ -127,7 +127,7 @@ class BakedPlaybackTest {
     @Test
     fun `progress is saved as the start of the utterance`() {
         val player = baked()
-        player.jumpToParagraph(1)
+        player.jumpTo(Position(1, 0))
         assertEquals(Position(1, 0), saved.last())
         player.onCompleteLast()
         assertEquals(Position(1, utterances[2].start), saved.last())
@@ -150,7 +150,7 @@ class BakedPlaybackTest {
         assertEquals(Position(1, utterances[2].start), baked.position)
 
         // Baked: the reader was in the third clip; live resumes at the start of that utterance.
-        baked.jumpToParagraph(2)
+        baked.jumpTo(Position(2, 0))
         val back = live(baked.position)
         assertEquals(3, back.state.utterance)
         assertEquals(0, back.state.wordStart)
@@ -163,7 +163,7 @@ class BakedPlaybackTest {
         val switching = SwitchingPlayback(live, { bakedPlayer })
         assertEquals(PlaybackMode.LIVE, switching.mode)
 
-        switching.jumpToParagraph(1)
+        switching.jumpTo(Position(1, 0))
         live.onRange(output.spoken.last().second, 6, 10) // "five" in the first utterance of paragraph 1
         assertEquals(PlaybackMode.LIVE, switching.mode)
 
@@ -190,11 +190,32 @@ class BakedPlaybackTest {
         switching.toggle()
         bakedPlayer = baked()
 
-        switching.jumpToParagraph(2)
+        switching.jumpTo(Position(2, 0))
 
         assertEquals(listOf(PlaybackMode.BAKED), modes)
         assertEquals("clip3.wav", clipPlayer.started.last().first)
         assertEquals(PlayerState(PlaybackStatus.PLAYING, 3), switching.state)
+    }
+
+    @Test
+    fun `a baked book can be read with live speech instead, and back, from the same place`() {
+        val bakedPlayer = baked()
+        val live = live()
+        val switching = SwitchingPlayback(live, { bakedPlayer })
+        switching.jumpTo(Position(1, 0))
+        assertEquals(PlaybackMode.BAKED, switching.mode)
+
+        switching.pause()
+        switching.preferLive = true
+        switching.toggle()
+        assertEquals(PlaybackMode.LIVE, switching.mode)
+        assertEquals("Four five six.", output.spoken.last().first)
+
+        switching.pause()
+        switching.preferLive = false
+        switching.toggle()
+        assertEquals(PlaybackMode.BAKED, switching.mode)
+        assertEquals("clip1.wav", clipPlayer.started.last().first)
     }
 
     @Test

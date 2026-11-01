@@ -16,6 +16,11 @@ data class BakeManifest(
     val complete: Boolean,
 )
 
+/** A failure with a message that is ready to show the user. */
+class BakeProblem(
+    message: String,
+) : Exception(message)
+
 /** Thrown by [BookBaker.bake] when the cancellation token was cancelled. Clips already written are kept. */
 class BakeCancelledException : Exception("The bake was cancelled")
 
@@ -96,6 +101,7 @@ class BookBakeController(
     private val baker: BookBaker,
     private val executor: Executor,
     private val sizeOf: (File) -> Long = ::folderSize,
+    private val freeSpace: (File) -> Long = ::usableSpaceOf,
 ) {
     @Volatile
     var listener: ((BakeState) -> Unit)? = null
@@ -118,31 +124,46 @@ class BookBakeController(
 
     fun start() {
         if (!baker.available || state is BakeState.Baking || clips != null) return
+        val done = doneOnDisk()
+        val needed = estimatedBytesNeeded(done)
+        val free = freeSpace(folder)
+        if (free < needed + SPACE_MARGIN_BYTES) {
+            publish(BakeState.Failed(notEnoughSpace(needed, free), done, utterances.size))
+            return
+        }
         val cancellation = CancellationToken()
         token = cancellation
-        publish(BakeState.Baking(doneOnDisk(), utterances.size))
+        publish(BakeState.Baking(done, utterances.size))
         executor.execute {
             try {
-                baker.bake(
-                    utterances,
-                    folder,
-                    cancellation,
-                ) { done, total -> publish(BakeState.Baking(done, total, cancellation.isCancelled)) }
+                baker.bake(utterances, folder, cancellation) { n, total -> publish(BakeState.Baking(n, total, cancellation.isCancelled)) }
                 refresh()
             } catch (e: BakeCancelledException) {
                 refresh()
             } catch (e: Exception) {
-                val done = doneOnDisk()
-                publish(
-                    BakeState.Failed(
-                        "Baking stopped because of a problem. Try again; it continues where it left off.",
-                        done,
-                        utterances.size,
-                    ),
-                )
+                val left = freeSpace(folder)
+                val message =
+                    when {
+                        e is BakeProblem -> e.message.orEmpty()
+                        left < LOW_SPACE_BYTES -> notEnoughSpace(estimatedBytesNeeded(doneOnDisk()), left)
+                        else -> "Baking stopped because of a problem. Try again; it continues where it left off."
+                    }
+                publish(BakeState.Failed(message, doneOnDisk(), utterances.size))
             }
         }
     }
+
+    /** A rough size for the clips still to make: speech is about 5 MB a minute, and a minute is about 170 words. */
+    private fun estimatedBytesNeeded(done: Int): Long {
+        val remaining = utterances.drop(done).sumOf { it.words.size.toLong() }
+        return remaining * BYTES_PER_WORD
+    }
+
+    private fun notEnoughSpace(
+        needed: Long,
+        free: Long,
+    ) = "Not enough free storage to bake this book. It needs about ${formatSize(needed)} and ${formatSize(free)} is free. " +
+        "Free some space and try again."
 
     fun cancel() {
         val current = state
@@ -176,6 +197,17 @@ class BookBakeController(
         listener?.invoke(next)
     }
 }
+
+/** Free bytes where [folder] is or will be (the nearest folder above it that exists). */
+fun usableSpaceOf(folder: File): Long {
+    var existing: File? = folder
+    while (existing != null && !existing.exists()) existing = existing.parentFile
+    return existing?.usableSpace ?: 0L
+}
+
+private const val BYTES_PER_WORD = 31_000L
+private const val SPACE_MARGIN_BYTES = 50L * 1024 * 1024
+private const val LOW_SPACE_BYTES = 20L * 1024 * 1024
 
 /** The total size in bytes of the files under [folder]; 0 when it does not exist. */
 fun folderSize(folder: File): Long = folder.walkTopDown().filter { it.isFile }.sumOf { it.length() }

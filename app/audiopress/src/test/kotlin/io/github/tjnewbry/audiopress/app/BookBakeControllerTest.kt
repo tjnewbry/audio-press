@@ -24,6 +24,7 @@ class BookBakeControllerTest {
     ) : BookBaker {
         var stopAfter: Int? = null // cancel (as a user would) once this many clips exist
         var failAt: Int? = null
+        var onFail: () -> Unit = {}
         val synthesized = mutableListOf<String>()
 
         override fun bake(
@@ -37,7 +38,10 @@ class BookBakeControllerTest {
                 val text = utterance.text
                 val file = File(folder, "clip$i.wav")
                 if (!file.exists()) {
-                    if (failAt == i) throw IllegalStateException("synthesis failed")
+                    if (failAt == i) {
+                        onFail()
+                        throw IllegalStateException("synthesis failed")
+                    }
                     file.writeText(text)
                     synthesized += text
                 }
@@ -57,7 +61,13 @@ class BookBakeControllerTest {
     private val audio get() = File(folder.root, "audio")
     private val states = mutableListOf<BakeState>()
 
-    private fun controller(baker: BookBaker) = BookBakeController(texts, audio, baker, now).also { it.listener = { s -> states += s } }
+    private var free = Long.MAX_VALUE
+
+    private fun controller(baker: BookBaker) =
+        BookBakeController(texts, audio, baker, now, freeSpace = { free }).also {
+            it.listener =
+                { s -> states += s }
+        }
 
     @Test
     fun `a book that was never baked starts as not baked, and has no clips`() {
@@ -142,6 +152,59 @@ class BookBakeControllerTest {
         controller.start()
         assertEquals(BakeState.Unavailable, controller.state)
         assertFailsWith<UnsupportedOperationException> { UnavailableBaker.bake(texts, audio, CancellationToken()) { _, _ -> } }
+    }
+
+    @Test
+    fun `baking is refused up front when there is not enough free storage, and nothing is written`() {
+        free = 10L * 1024 * 1024
+        val baker = FakeBaker()
+        val controller = controller(baker)
+
+        controller.start()
+
+        val failed = assertNotNull(controller.state as? BakeState.Failed)
+        assertTrue("Not enough free storage" in failed.message)
+        assertTrue("10 MB is free" in failed.message)
+        assertEquals(emptyList(), baker.synthesized)
+        assertTrue(!audio.exists())
+
+        free = Long.MAX_VALUE
+        controller.start()
+        assertTrue(controller.state is BakeState.Baked)
+    }
+
+    @Test
+    fun `a bake that dies when storage runs out says so, and one that fails for another reason does not`() {
+        val baker = FakeBaker().apply { failAt = 1 }
+        val controller = controller(baker)
+        free = 100L * 1024 * 1024 // enough to start
+        baker.onFail = { free = 1024 } // and then the disk fills up
+
+        controller.start()
+        assertTrue("Not enough free storage" in assertNotNull(controller.state as? BakeState.Failed).message)
+
+        free = Long.MAX_VALUE
+        baker.onFail = {}
+        controller.start()
+        assertTrue("continues where it left off" in assertNotNull(controller.state as? BakeState.Failed).message)
+    }
+
+    @Test
+    fun `a problem with its own message is shown as it is`() {
+        val baker =
+            object : BookBaker by FakeBaker() {
+                override fun bake(
+                    utterances: List<Utterance>,
+                    folder: File,
+                    cancellation: CancellationToken,
+                    onProgress: (Int, Int) -> Unit,
+                ): Unit = throw BakeProblem("No voice here")
+            }
+        val controller = controller(baker)
+
+        controller.start()
+
+        assertEquals("No voice here", assertNotNull(controller.state as? BakeState.Failed).message)
     }
 
     @Test

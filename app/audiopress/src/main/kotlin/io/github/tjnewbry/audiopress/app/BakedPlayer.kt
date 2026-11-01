@@ -89,9 +89,8 @@ class BakedPlayer(
         onSave(position)
     }
 
-    override fun jumpToParagraph(paragraph: Int) {
-        val index = utterances.indexOfFirst { it.paragraph >= paragraph }
-        if (index >= 0) startClip(index, 0)
+    override fun jumpTo(position: Position) {
+        utteranceIndexAt(utterances, position)?.let { startClip(it, 0) }
     }
 
     override fun moveTo(position: Position) {

@@ -33,7 +33,7 @@ class ModuleBaker(
         cancellation: CancellationToken,
         onProgress: (done: Int, total: Int) -> Unit,
     ) {
-        val synthesizer = openSynthesizer() ?: throw IllegalStateException("This device has no working text-to-speech engine.")
+        val synthesizer = openSynthesizer() ?: throw BakeProblem(NO_ENGINE_MESSAGE)
         try {
             ModuleBookBaker(synthesizer).bake(utterances.map { it.toBakeItem() }, folder, SETTINGS_KEY, cancellation) {
                 onProgress(it.done, it.total)

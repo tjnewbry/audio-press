@@ -20,8 +20,11 @@ data class Utterance(
     }
 }
 
-/** Android's `TextToSpeech` refuses more than 4000 characters at once; stay a little under it. */
-const val MAX_UTTERANCE_CHARS = 3900
+/**
+ * The longest utterance, in characters. Android's `TextToSpeech` refuses more than 4000 at once, and the reader shows one
+ * utterance per line, which stays smooth only when a line is not enormous. Longer paragraphs are cut at sentence ends.
+ */
+const val MAX_UTTERANCE_CHARS = 1500
 
 private val SENTENCE_END = Regex("[.!?…][\"'”’)\\]]*(?=\\s)")
 
@@ -86,4 +89,13 @@ fun locate(
         return if (next >= 0) next to 0 else 0 to 0
     }
     return index to (position.offset - utterance.start).coerceIn(0, utterance.text.length)
+}
+
+/** The index of the utterance to start from when jumping to [position], or null when the position is past the end of the book. */
+fun utteranceIndexAt(
+    utterances: List<Utterance>,
+    position: Position,
+): Int? {
+    if (utterances.isEmpty() || position.paragraph > utterances.last().paragraph) return null
+    return locate(utterances, position).first
 }

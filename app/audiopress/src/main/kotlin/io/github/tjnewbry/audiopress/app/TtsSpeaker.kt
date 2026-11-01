@@ -84,12 +84,47 @@ class TtsSpeaker(
     }
 
     private fun describeInit(status: Int): String? {
-        if (status != TextToSpeech.SUCCESS) return "This device has no working text-to-speech engine."
-        val usable = listOf(Locale.getDefault(), Locale.US).firstOrNull { tts.setLanguage(it) >= TextToSpeech.LANG_AVAILABLE }
-        return if (usable == null) "This device has no text-to-speech voice for your language." else null
+        if (status != TextToSpeech.SUCCESS) return speechProblem(status, TextToSpeech.ERROR)
+        val results = listOf(Locale.getDefault(), Locale.US).map { tts.setLanguage(it) }
+        // Reading in English is fine when the phone's own language has no voice, so the best of the two counts.
+        return speechProblem(status, results.maxOrNull() ?: TextToSpeech.ERROR, results.first())
     }
 
     private companion object {
         const val TAG = "AudioPressTts"
     }
 }
+
+const val NO_ENGINE_MESSAGE =
+    "This phone has no working text-to-speech engine. Install or turn on one in Settings, under " +
+        "Text-to-speech output, then open the book again."
+
+/**
+ * The message to show when speech cannot start, or null when it can. [initStatus] is what `TextToSpeech` reported
+ * when it started; [bestLanguage] is the best result of trying the phone's language and then English (`setLanguage`
+ * results, higher is better); [phoneLanguage] is the result for the phone's own language, used to say what is wrong.
+ */
+fun speechProblem(
+    initStatus: Int,
+    bestLanguage: Int,
+    phoneLanguage: Int = bestLanguage,
+): String? =
+    when {
+        initStatus != TextToSpeech.SUCCESS -> {
+            NO_ENGINE_MESSAGE
+        }
+
+        bestLanguage >= TextToSpeech.LANG_AVAILABLE -> {
+            null
+        }
+
+        phoneLanguage == TextToSpeech.LANG_MISSING_DATA -> {
+            "The text-to-speech voice for your language is not installed. Download its voice data in Settings, under " +
+                "Text-to-speech output."
+        }
+
+        else -> {
+            "The text-to-speech engine does not support your language. Choose another engine or language in Settings, " +
+                "under Text-to-speech output."
+        }
+    }

@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -45,20 +46,28 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
 class MainActivity : ComponentActivity() {
+    private val library: LibraryViewModel by viewModels()
+
+    override fun onStop() {
+        // Leaving the app or turning the screen off pauses playback and saves the position. A rotation also stops the
+        // activity, but the reading carries on through it.
+        if (!isChangingConfigurations) library.pausePlayback()
+        super.onStop()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
-                val library: LibraryViewModel = viewModel()
                 val reader = library.reader
                 BackHandler(enabled = reader != null) { library.closeReader() }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -127,7 +136,10 @@ private fun LibraryScreen(
 
             else -> {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(library.books, key = { it.id }) { book -> BookRow(book) { library.open(book) } }
+                    items(
+                        library.books,
+                        key = { it.id },
+                    ) { book -> BookRow(book, baked = book.id in library.bakedBooks) { library.open(book) } }
                 }
             }
         }
@@ -137,6 +149,7 @@ private fun LibraryScreen(
 @Composable
 private fun BookRow(
     book: Book,
+    baked: Boolean,
     onClick: () -> Unit,
 ) {
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
@@ -144,6 +157,7 @@ private fun BookRow(
             Text(book.title, style = MaterialTheme.typography.titleMedium)
             val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(book.importedAt))
             Text("%,d words, imported %s".format(book.wordCount, date), style = MaterialTheme.typography.bodyMedium)
+            if (baked) Text("Baked audio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -157,12 +171,17 @@ private fun ReaderScreen(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Library") }
-            Text(session.book.title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
+            Text(
+                session.book.title,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
         }
         SpeakButton(session)
         Timestamp(session)
-        BakeSection(session)
-        Captions(session)
+        Captions(session) { BakeSection(session) }
     }
 }
 
@@ -170,8 +189,12 @@ private fun ReaderScreen(
 private const val USER_SCROLL_PAUSE_MS = 4000L
 
 @Composable
-private fun Captions(session: ReaderSession) {
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, session.currentParagraph - 1))
+private fun Captions(
+    session: ReaderSession,
+    header: @Composable () -> Unit,
+) {
+    // Line i is list item i + 1, after the header, so showing the line before the current one means item `current`.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = session.currentLine)
     var lastUserScroll by remember { mutableLongStateOf(0L) }
     var autoScrolling by remember { mutableStateOf(false) }
     LaunchedEffect(listState) {
@@ -179,28 +202,29 @@ private fun Captions(session: ReaderSession) {
             if (scrolling && !autoScrolling) lastUserScroll = SystemClock.uptimeMillis()
         }
     }
-    val current = session.currentParagraph
+    val current = session.currentLine
     LaunchedEffect(current, session.player.status) {
         val idle = SystemClock.uptimeMillis() - lastUserScroll > USER_SCROLL_PAUSE_MS
         if (session.player.status == PlaybackStatus.PLAYING && idle) {
             autoScrolling = true
             try {
-                listState.animateScrollToItem(maxOf(0, current - 1)) // the line before it stays in view for context
+                listState.animateScrollToItem(current) // the line before it stays in view for context
             } finally {
                 autoScrolling = false
             }
         }
     }
     LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        itemsIndexed(session.paragraphs) { index, paragraph ->
+        item(key = "header", contentType = "header") { header() }
+        itemsIndexed(session.lines, key = lineKey, contentType = { _, line -> session.paragraphs[line.paragraph].kind }) { index, line ->
             val isCurrent = index == current && session.player.status != PlaybackStatus.STOPPED
-            val heading = paragraph.kind == SegmentKind.HEADING
+            val heading = session.paragraphs[line.paragraph].kind == SegmentKind.HEADING
             val highlight = MaterialTheme.colorScheme.primaryContainer
+            val word = if (isCurrent) session.currentWord else null // only the current line follows the word
             val text =
                 buildAnnotatedString {
-                    append(paragraph.text)
-                    val word = session.currentWord
-                    if (isCurrent && word != null && word.last < paragraph.text.length) {
+                    append(line.text)
+                    if (word != null && word.last < line.text.length) {
                         addStyle(SpanStyle(background = highlight, fontWeight = FontWeight.Bold), word.first, word.last + 1)
                     }
                 }
@@ -214,6 +238,8 @@ private fun Captions(session: ReaderSession) {
         }
     }
 }
+
+private val lineKey: (Int, Utterance) -> Any = { index, _ -> index }
 
 @Composable
 private fun SpeakButton(session: ReaderSession) {
@@ -298,7 +324,12 @@ private fun BakeSection(session: ReaderSession) {
         }
 
         is BakeState.Baked -> {
-            Text("Baked audio on this phone: ${formatSize(state.bytes)}", style = MaterialTheme.typography.labelLarge)
+            Column {
+                Text("Baked audio on this phone: ${formatSize(state.bytes)}", style = MaterialTheme.typography.labelLarge)
+                TextButton(onClick = { session.choosePlayback(live = !session.preferLive) }) {
+                    Text(if (session.preferLive) "Play the baked audio" else "Read with live speech instead")
+                }
+            }
         }
     }
 }

@@ -105,11 +105,11 @@ class ReaderPlayerTest {
     @Test
     fun `tapping a paragraph starts reading from it, whether playing or not`() {
         val player = player()
-        player.jumpToParagraph(2)
+        player.jumpTo(Position(2, 0))
         assertEquals("six seven eight nine", output.spoken.last().first)
         assertEquals(PlayerState(PlaybackStatus.PLAYING, 2, 0, 3), player.state)
 
-        player.jumpToParagraph(1)
+        player.jumpTo(Position(1, 0))
         assertEquals("four five", output.spoken.last().first)
         assertEquals(1, player.state.utterance)
         assertNotEquals(output.spoken[0].second, output.lastId)
@@ -195,7 +195,7 @@ class ReaderPlayerTest {
     fun `nothing to read does nothing`() {
         val empty = ReaderPlayer(emptyList(), output)
         empty.toggle()
-        empty.jumpToParagraph(0)
+        empty.jumpTo(Position(0, 0))
 
         assertEquals(PlayerState(), empty.state)
         assertEquals(0, output.spoken.size)

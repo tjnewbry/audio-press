@@ -74,10 +74,8 @@ class ReaderPlayer(
         save()
     }
 
-    /** Starts playing from the beginning of [paragraph] (or the next one with text). */
-    override fun jumpToParagraph(paragraph: Int) {
-        val index = utterances.indexOfFirst { it.paragraph >= paragraph }
-        if (index >= 0) speakFrom(index, 0)
+    override fun jumpTo(position: Position) {
+        utteranceIndexAt(utterances, position)?.let { speakFrom(it, 0) }
     }
 
     override fun moveTo(position: Position) {

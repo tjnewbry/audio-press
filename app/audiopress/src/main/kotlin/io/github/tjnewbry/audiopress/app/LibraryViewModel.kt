@@ -46,6 +46,10 @@ class LibraryViewModel(
 ) : AndroidViewModel(application) {
     var books: List<Book> by mutableStateOf(emptyList())
         private set
+
+    /** The ids of books whose audio is fully baked; the library marks them. */
+    var bakedBooks: Set<String> by mutableStateOf(emptySet())
+        private set
     var importState: ImportState by mutableStateOf(ImportState.Idle)
         private set
     var reader: ReaderSession? by mutableStateOf(null)
@@ -123,10 +127,21 @@ class LibraryViewModel(
             try {
                 val paragraphs = store.load(book.id)
                 val position = store.loadProgress(book.id)
-                val bake = bakeFor(book, paragraphs)
+                // Split the book and find its words here, off the main thread, so opening a huge book does not freeze the screen.
+                val utterances = speechUtterances(paragraphs).onEach { it.words }
+                val bake = bakeFor(book, utterances)
                 main.post {
                     if (reader == null) {
-                        reader = ReaderSession(getApplication(), book, paragraphs, position, { store.saveProgress(book.id, it) }, bake)
+                        reader =
+                            ReaderSession(
+                                getApplication(),
+                                book,
+                                paragraphs,
+                                utterances,
+                                position,
+                                { store.saveProgress(book.id, it) },
+                                bake,
+                            )
                     }
                 }
             } catch (e: Exception) {
@@ -136,9 +151,15 @@ class LibraryViewModel(
         }
     }
 
+    /** Pauses the open book, if any, so the position is saved. */
+    fun pausePlayback() {
+        reader?.pausePlayback()
+    }
+
     fun closeReader() {
         reader?.close()
         reader = null
+        worker.execute { refresh() } // a bake may have finished while the book was open
     }
 
     override fun onCleared() {
@@ -151,16 +172,20 @@ class LibraryViewModel(
     /** The bake controller for [book], made once and kept while the app runs. Call on the worker thread. */
     private fun bakeFor(
         book: Book,
-        paragraphs: List<StoredParagraph>,
+        utterances: List<Utterance>,
     ): BookBakeController =
         bakes.getOrPut(book.id) {
-            BookBakeController(speechUtterances(paragraphs), store.audioFolder(book.id), baker, bakeWorker)
+            BookBakeController(utterances, store.audioFolder(book.id), baker, bakeWorker)
         }
 
     private fun refresh() {
-        books = store.list()
+        val list = store.list()
+        bakedBooks = list.filter { isBaked(it) }.map { it.id }.toSet()
+        books = list
         loaded = true
     }
+
+    private fun isBaked(book: Book): Boolean = baker.available && baker.readManifest(store.audioFolder(book.id))?.complete == true
 
     private fun queryFileName(uri: Uri): String? =
         try {

@@ -81,6 +81,27 @@ class BookImporterTest {
     }
 
     @Test
+    fun `running out of storage is reported as such, wherever in the chain it is found`() {
+        val plain = importErrorMessage("big.pdf", java.io.IOException("write failed: ENOSPC (No space left on device)"))
+        val wrapped = importErrorMessage("big.pdf", InputUnreadableException("big.pdf", java.io.IOException("No space left on device")))
+
+        assertTrue("not enough free storage" in plain && "big.pdf" in plain)
+        assertEquals(plain, wrapped)
+        assertTrue(isOutOfSpace(RuntimeException("x", java.io.IOException("ENOSPC"))))
+        assertTrue(!isOutOfSpace(java.io.IOException("Permission denied")))
+    }
+
+    @Test
+    fun `a book that cannot be written leaves nothing in the library`() {
+        val blocker = File(folder.root, "books").apply { writeText("a file, so no folder can be made here") }
+        val store = BookStore(blocker)
+
+        assertFailsWith<java.io.IOException> { SampleTextSource().use { BookImporter(store).import(it, "Lighthouse") } }
+        assertEquals(emptyList(), store.list())
+        assertEquals(listOf("books"), folder.root.list()!!.toList())
+    }
+
+    @Test
     fun `titles come from the file name without the pdf extension`() {
         assertEquals("My Book", titleFromFileName("My Book.pdf"))
         assertEquals("My Book", titleFromFileName("My Book.PDF"))

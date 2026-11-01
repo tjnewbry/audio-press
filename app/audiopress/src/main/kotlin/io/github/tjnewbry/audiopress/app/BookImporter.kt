@@ -50,6 +50,30 @@ fun importErrorMessage(
     fileName: String,
     error: Throwable,
 ): String =
+    if (isOutOfSpace(error)) {
+        "There is not enough free storage to import \"$fileName\". Free some space and try again."
+    } else {
+        describeImportError(fileName, error)
+    }
+
+/** True when [error], or what caused it, is the phone running out of storage. */
+fun isOutOfSpace(error: Throwable?): Boolean {
+    var current = error
+    var depth = 0
+    while (current != null && depth++ < MAX_CAUSE_DEPTH) {
+        val message = current.message.orEmpty()
+        if ("ENOSPC" in message || "No space left" in message || "not enough space" in message.lowercase()) return true
+        current = current.cause
+    }
+    return false
+}
+
+private const val MAX_CAUSE_DEPTH = 8
+
+private fun describeImportError(
+    fileName: String,
+    error: Throwable,
+): String =
     when (error) {
         is NoTextLayerException -> {
             "\"$fileName\" has no text to read. It looks like a scanned PDF, and scanned PDFs are not supported yet."
