@@ -9,6 +9,8 @@ data class Utterance(
     val paragraph: Int,
     val start: Int,
     val text: String,
+    /** The book page the paragraph starts on; the bake module records it. */
+    val page: Int = 0,
 ) {
     /** The character range of each word in [text]. */
     val words: List<IntRange> by lazy { WORD.findAll(text).map { it.range }.toList() }

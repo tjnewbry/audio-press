@@ -24,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,12 +40,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.github.tjnewbry.audiopress.core.SegmentKind
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -156,10 +160,8 @@ private fun ReaderScreen(
             Text(session.book.title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
         }
         SpeakButton(session)
-        Text(
-            "${formatDuration(session.elapsedSeconds())} / ${formatDuration(session.totalSeconds())} (estimated)",
-            style = MaterialTheme.typography.labelLarge,
-        )
+        Timestamp(session)
+        BakeSection(session)
         Captions(session)
     }
 }
@@ -223,12 +225,80 @@ private fun SpeakButton(session: ReaderSession) {
         }
     Button(
         onClick = session::togglePlayback,
-        enabled = session.speech == SpeechState.Ready,
+        enabled = session.speech == SpeechState.Ready || session.bakeState is BakeState.Baked,
         modifier = Modifier.fillMaxWidth(),
     ) { Text(label) }
     when (val speech = session.speech) {
-        SpeechState.Starting -> Text("Starting text-to-speech...")
-        SpeechState.Ready -> Unit
-        is SpeechState.Unavailable -> Text(speech.message, color = MaterialTheme.colorScheme.error)
+        SpeechState.Starting -> {
+            Text("Starting text-to-speech...")
+        }
+
+        SpeechState.Ready -> {
+            // Nothing to show.
+        }
+
+        is SpeechState.Unavailable -> {
+            if (session.bakeState !is BakeState.Baked) {
+                Text(
+                    speech.message,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Timestamp(session: ReaderSession) {
+    // Baked audio moves between words, so redraw twice a second while it plays.
+    var tick by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(session.player.status, session.mode) {
+        while (session.player.status == PlaybackStatus.PLAYING && session.mode == PlaybackMode.BAKED) {
+            tick = SystemClock.uptimeMillis()
+            delay(TICK_MS)
+        }
+    }
+    val baked = session.mode == PlaybackMode.BAKED
+    val times = "${formatDuration(session.elapsedSeconds())} / ${formatDuration(session.totalSeconds())}"
+    Text(
+        if (baked) "$times (baked audio)" else "$times (estimated, live speech)",
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.semantics { stateDescription = "tick $tick" },
+    )
+}
+
+private const val TICK_MS = 500L
+
+@Composable
+private fun BakeSection(session: ReaderSession) {
+    when (val state = session.bakeState) {
+        BakeState.Unavailable -> {
+            // This build cannot bake: no controls.
+        }
+
+        is BakeState.NotBaked -> {
+            val label = if (state.done > 0) "Resume baking (${state.done} of ${state.total} done)" else "Bake audio for this book"
+            OutlinedButton(onClick = session::startBake, modifier = Modifier.fillMaxWidth()) { Text(label) }
+        }
+
+        is BakeState.Baking -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                val fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f
+                Text(if (state.cancelling) "Cancelling..." else "Baking audio: ${state.done} of ${state.total}")
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                TextButton(onClick = session::cancelBake, enabled = !state.cancelling) { Text("Cancel baking") }
+            }
+        }
+
+        is BakeState.Failed -> {
+            Column {
+                Text(state.message, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = session::startBake) { Text("Try again") }
+            }
+        }
+
+        is BakeState.Baked -> {
+            Text("Baked audio on this phone: ${formatSize(state.bytes)}", style = MaterialTheme.typography.labelLarge)
+        }
     }
 }

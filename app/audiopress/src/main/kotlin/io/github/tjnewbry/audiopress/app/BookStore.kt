@@ -95,6 +95,9 @@ class BookStore(
             null
         }
 
+    /** The folder for book [id]'s baked audio. It may not exist yet. */
+    fun audioFolder(id: String): File = File(bookFolder(id), "bake")
+
     private fun bookFolder(id: String): File {
         require(id.isNotEmpty() && '/' !in id && '\\' !in id && id != "." && id != "..") { "Bad book id" }
         return File(root, id)

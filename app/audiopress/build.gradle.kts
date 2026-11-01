@@ -48,6 +48,8 @@ dependencies {
 
     // The Android PDF reader, which implements the engine's TextSource (owned by the engine owner).
     implementation(project(":pdf-source"))
+    // Turns utterances into audio files (owned by the engine owner for now).
+    implementation(project(":bake"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

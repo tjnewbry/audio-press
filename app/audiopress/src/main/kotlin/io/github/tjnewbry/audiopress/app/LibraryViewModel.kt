@@ -65,6 +65,11 @@ class LibraryViewModel(
     private val store = BookStore(File(application.filesDir, "books"))
     private val opener = PdfOpener { uri, name -> AndroidPdfTextSource.open(application, uri, name) }
 
+    // Baking has its own thread (it is long), and its controllers outlive the reader screen so a bake carries on.
+    private val bakeWorker = Executors.newSingleThreadExecutor { Thread(it, "bake") }
+    private val baker: BookBaker = ModuleBaker(application)
+    private val bakes = mutableMapOf<String, BookBakeController>()
+
     init {
         worker.execute {
             AndroidPdfTextSource.clearWorkFiles(application)
@@ -118,9 +123,10 @@ class LibraryViewModel(
             try {
                 val paragraphs = store.load(book.id)
                 val position = store.loadProgress(book.id)
+                val bake = bakeFor(book, paragraphs)
                 main.post {
                     if (reader == null) {
-                        reader = ReaderSession(getApplication(), book, paragraphs, position) { store.saveProgress(book.id, it) }
+                        reader = ReaderSession(getApplication(), book, paragraphs, position, { store.saveProgress(book.id, it) }, bake)
                     }
                 }
             } catch (e: Exception) {
@@ -138,7 +144,18 @@ class LibraryViewModel(
     override fun onCleared() {
         reader?.close()
         worker.shutdown()
+        bakes.values.forEach { it.cancel() }
+        bakeWorker.shutdown()
     }
+
+    /** The bake controller for [book], made once and kept while the app runs. Call on the worker thread. */
+    private fun bakeFor(
+        book: Book,
+        paragraphs: List<StoredParagraph>,
+    ): BookBakeController =
+        bakes.getOrPut(book.id) {
+            BookBakeController(speechUtterances(paragraphs), store.audioFolder(book.id), baker, bakeWorker)
+        }
 
     private fun refresh() {
         books = store.list()

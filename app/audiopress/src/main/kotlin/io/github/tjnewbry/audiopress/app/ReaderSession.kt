@@ -1,6 +1,8 @@
 package io.github.tjnewbry.audiopress.app
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,10 +19,16 @@ sealed interface SpeechState {
     ) : SpeechState
 }
 
+/** The utterances of a book, cut to what this device's speech engine accepts. Live reading and baking use the same list. */
+fun speechUtterances(paragraphs: List<StoredParagraph>): List<Utterance> =
+    splitIntoUtterances(paragraphs.map { it.text }, minOf(TextToSpeech.getMaxSpeechInputLength() - 100, MAX_UTTERANCE_CHARS))
+        .map { it.copy(page = paragraphs[it.paragraph].page) }
+
 /**
- * An open book: its [paragraphs], the text-to-speech that reads them, the current position, and the time
- * estimate. Create it on the main thread and call [close] when the book is closed, which pauses (and so saves
- * the position) and releases the speech engine. [saveProgress] is called on a background thread.
+ * An open book: its [paragraphs], the player (live speech, or baked audio once the book is baked), the current
+ * position, the time shown, and the bake. Create it on the main thread and call [close] when the book is closed,
+ * which pauses (and so saves the position) and releases the speech engine and the audio player. [saveProgress] is
+ * called on a background thread. [bake] belongs to the library, so a bake carries on after the book is closed.
  */
 class ReaderSession(
     context: Context,
@@ -28,73 +36,123 @@ class ReaderSession(
     val paragraphs: List<StoredParagraph>,
     initialPosition: Position?,
     private val saveProgress: (Position) -> Unit,
+    val bake: BookBakeController,
 ) {
-    private val utterances =
-        splitIntoUtterances(paragraphs.map { it.text }, minOf(TextToSpeech.getMaxSpeechInputLength() - 100, MAX_UTTERANCE_CHARS))
+    private val utterances = speechUtterances(paragraphs)
     private val estimator = TimeEstimator(utterances.map { it.words.size })
     private val saver = Executors.newSingleThreadExecutor { Thread(it, "save-progress") }
+    private val main = Handler(Looper.getMainLooper())
+    private val clipPlayer = MediaClipPlayer()
 
     var speech: SpeechState by mutableStateOf(SpeechState.Starting)
         private set
     var player: PlayerState by mutableStateOf(PlayerState())
         private set
+    var mode: PlaybackMode by mutableStateOf(PlaybackMode.LIVE)
+        private set
+    var bakeState: BakeState by mutableStateOf(bake.state)
+        private set
 
-    private var readerPlayer: ReaderPlayer? = null
+    private var livePlayer: ReaderPlayer? = null
+    private var bakedPlayer: BakedPlayer? = null
+    private var switcher: SwitchingPlayback? = null
     private val speaker =
         TtsSpeaker(
             context,
-            onUtteranceStart = { readerPlayer?.onUtteranceStart(it) },
-            onRange = { id, start, end -> readerPlayer?.onRange(id, start, end) },
-            onUtteranceDone = { readerPlayer?.onUtteranceDone(it) },
-            onUtteranceError = { readerPlayer?.onUtteranceError(it) },
+            onUtteranceStart = { livePlayer?.onUtteranceStart(it) },
+            onRange = { id, start, end -> livePlayer?.onRange(id, start, end) },
+            onUtteranceDone = { livePlayer?.onUtteranceDone(it) },
+            onUtteranceError = { livePlayer?.onUtteranceError(it) },
             onReady = { problem -> speech = if (problem == null) SpeechState.Ready else SpeechState.Unavailable(problem) },
         )
 
     init {
-        readerPlayer =
+        val live =
             ReaderPlayer(
                 utterances,
                 speaker,
                 initialPosition,
                 onMeasured = estimator::record,
-                onSave = { position -> if (!saver.isShutdown) saver.execute { runCatching { saveProgress(position) } } },
-                onChange = { player = it },
+                onSave = ::save,
+                onChange = { if (mode == PlaybackMode.LIVE) player = it },
             )
-        player = readerPlayer?.state ?: PlayerState()
+        livePlayer = live
+        bakedPlayer = createBakedPlayer(initialPosition)
+        val switching = SwitchingPlayback(live, { bakedPlayer }, onModeChange = { mode = it })
+        switcher = switching
+        mode = switching.mode
+        player = switching.state
+        bake.listener = { state ->
+            main.post {
+                bakeState = state
+                if (bakedPlayer == null) bakedPlayer = createBakedPlayer(switching.position)
+            }
+        }
+        bakeState = bake.state
     }
 
     /** The paragraph being read, or the one where reading resumes. */
     val currentParagraph: Int get() = utterances.getOrNull(player.utterance)?.paragraph ?: 0
 
-    /** The current word as a range of characters in the current paragraph's text, or null before anything has been read. */
+    /** The current word as a range of characters in the current paragraph's text. Null in baked mode, which has no word timing. */
     val currentWord: IntRange?
         get() {
+            if (mode == PlaybackMode.BAKED) return null
             val utterance = utterances.getOrNull(player.utterance) ?: return null
             if (player.status == PlaybackStatus.STOPPED || player.wordEnd <= player.wordStart) return null
             return (utterance.start + player.wordStart) until (utterance.start + player.wordEnd)
         }
 
-    /** Time before the current word, estimated from word counts and refined by measured speaking time. */
+    /** Time before the current point: real in baked mode, estimated in live mode (from word counts, refined as it plays). */
     fun elapsedSeconds(): Double {
+        bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { return it.elapsedMs / MS_PER_SECOND }
         val utterance = utterances.getOrNull(player.utterance) ?: return 0.0
         val wordsBefore = utterance.words.count { it.first < player.wordStart }
         return estimator.elapsedSeconds(player.utterance, wordsBefore)
     }
 
-    fun totalSeconds(): Double = estimator.totalSeconds()
+    fun totalSeconds(): Double =
+        bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { it.totalMs / MS_PER_SECOND } ?: estimator.totalSeconds()
 
     fun togglePlayback() {
-        readerPlayer?.toggle()
+        switcher?.toggle()
     }
 
     /** Starts reading from the beginning of paragraph [index]. */
     fun jumpTo(index: Int) {
-        readerPlayer?.jumpToParagraph(index)
+        switcher?.jumpToParagraph(index)
     }
 
+    fun startBake() = bake.start()
+
+    fun cancelBake() = bake.cancel()
+
     fun close() {
-        readerPlayer?.pause()
+        bake.listener = null
+        switcher?.pause()
         speaker.shutdown()
+        clipPlayer.pause() // releases the media player
         saver.shutdown() // lets the last save finish
+    }
+
+    private fun createBakedPlayer(start: Position?): BakedPlayer? {
+        val clips = bake.clips ?: return null
+        if (clips.size != utterances.size) return null
+        return BakedPlayer(
+            utterances,
+            clips,
+            clipPlayer,
+            start,
+            onSave = ::save,
+            onChange = { if (mode == PlaybackMode.BAKED) player = it },
+        )
+    }
+
+    private fun save(position: Position) {
+        if (!saver.isShutdown) saver.execute { runCatching { saveProgress(position) } }
+    }
+
+    private companion object {
+        const val MS_PER_SECOND = 1000.0
     }
 }

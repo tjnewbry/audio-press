@@ -39,8 +39,8 @@ class ReaderPlayer(
     private val onMeasured: (words: Int, seconds: Double) -> Unit = { _, _ -> },
     private val onSave: (Position) -> Unit = {},
     private val onChange: (PlayerState) -> Unit = {},
-) {
-    var state = initialState(start)
+) : Playback {
+    final override var state = initialState(start)
         private set(value) {
             field = value
             onChange(value)
@@ -52,21 +52,21 @@ class ReaderPlayer(
     private var lastSavedAt = Long.MIN_VALUE
 
     /** Where playback is, as a paragraph and a character offset in it. */
-    val position: Position
+    override val position: Position
         get() {
             val utterance = utterances.getOrNull(state.utterance) ?: return Position(0, 0)
             return Position(utterance.paragraph, utterance.start + state.wordStart)
         }
 
-    fun toggle() {
+    override fun toggle() {
         if (state.status == PlaybackStatus.PLAYING) pause() else play()
     }
 
-    fun play() {
+    override fun play() {
         if (utterances.isNotEmpty() && state.status != PlaybackStatus.PLAYING) speakFrom(state.utterance, state.wordStart)
     }
 
-    fun pause() {
+    override fun pause() {
         if (state.status != PlaybackStatus.PLAYING) return
         sequence++ // a callback from the stopped utterance must not move playback on
         output.stop()
@@ -75,9 +75,17 @@ class ReaderPlayer(
     }
 
     /** Starts playing from the beginning of [paragraph] (or the next one with text). */
-    fun jumpToParagraph(paragraph: Int) {
+    override fun jumpToParagraph(paragraph: Int) {
         val index = utterances.indexOfFirst { it.paragraph >= paragraph }
         if (index >= 0) speakFrom(index, 0)
+    }
+
+    override fun moveTo(position: Position) {
+        if (state.status == PlaybackStatus.PLAYING) {
+            sequence++ // callbacks from the utterance being stopped must not move playback on
+            output.stop()
+        }
+        state = initialState(position)
     }
 
     /** The engine began speaking the utterance with [utteranceId]. Callbacks for old utterances are ignored. */
