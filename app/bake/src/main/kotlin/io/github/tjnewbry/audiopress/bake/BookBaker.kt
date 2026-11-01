@@ -7,7 +7,7 @@ import java.io.IOException
 import java.security.MessageDigest
 
 /** How a [SpeechSynthesizer] call ended. */
-enum class SynthesisResult { SUCCESS, FAILED, CANCELLED }
+enum class SynthesisResult { SUCCESS, FAILED, CANCELLED, OUT_OF_MEMORY }
 
 /**
  * Turns text into a WAV file. The Android implementation is [TtsFileSynthesizer]; tests use a fake. [synthesize]
@@ -41,6 +41,11 @@ data class BakeProgress(
 
 /** The bake was cancelled with its [CancellationToken]. The files baked so far are kept, so the next run resumes. */
 class BakeCancelledException : Exception("The bake was cancelled")
+
+/** The voice ran out of memory on utterance [index]. Nothing is retried. Run the bake again to resume, perhaps with a smaller model. */
+class BakeOutOfMemoryException(
+    val index: Int,
+) : Exception("Not enough memory to bake utterance $index")
 
 /** The voice could not produce audio for utterance [index], even after a retry. Run the bake again to resume. */
 class BakeFailedException(
@@ -117,7 +122,7 @@ class BookBaker(
         folder.listFiles { f -> f.name.endsWith(".tmp") }?.forEach { it.delete() } // half-written files from a killed run
 
         val baked = ArrayList<BakedUtterance>(utterances.size)
-        writeManifest(folder, fingerprint, utterances.size, baked, complete = false)
+        writeManifest(folder, fingerprint, utterances.size, baked, false, settingsKey)
         onProgress(BakeProgress(0, utterances.size))
         for ((i, utterance) in utterances.withIndex()) {
             if (cancellation?.isCancelled == true) throw BakeCancelledException()
@@ -127,8 +132,8 @@ class BookBaker(
                 BakedUtterance(i, name, utterance.segmentIndex, utterance.start, utterance.end, utterance.page, duration)
             onProgress(BakeProgress(i + 1, utterances.size))
         }
-        writeManifest(folder, fingerprint, utterances.size, baked, complete = true)
-        return BakedBook(folder, fingerprint, baked, isComplete = true)
+        writeManifest(folder, fingerprint, utterances.size, baked, true, settingsKey)
+        return BakedBook(folder, fingerprint, baked, isComplete = true, settingsKey = settingsKey.ifEmpty { null })
     }
 
     private fun existingDuration(file: File): Long? = Wav.durationMs(file)?.takeIf { it > 0 }
@@ -146,6 +151,10 @@ class BookBaker(
         repeat(ATTEMPTS) { attempt ->
             temporary.delete()
             val result = synthesizer.synthesize(utterance.text, temporary, cancellation)
+            if (result == SynthesisResult.OUT_OF_MEMORY) {
+                temporary.delete()
+                throw BakeOutOfMemoryException(index)
+            }
             if (result == SynthesisResult.CANCELLED) {
                 temporary.delete()
                 throw BakeCancelledException()
@@ -176,9 +185,10 @@ class BookBaker(
         count: Int,
         baked: List<BakedUtterance>,
         complete: Boolean,
+        settingsKey: String,
     ) {
         val temporary = File(folder, "${BakedBook.MANIFEST_NAME}.tmp")
-        temporary.writeText(BakeManifest.format(fingerprint, count, baked, complete), Charsets.UTF_8)
+        temporary.writeText(BakeManifest.format(fingerprint, count, baked, complete, settingsKey), Charsets.UTF_8)
         val manifest = File(folder, BakedBook.MANIFEST_NAME)
         manifest.delete()
         if (!temporary.renameTo(manifest)) throw IOException("cannot write ${manifest.path}")

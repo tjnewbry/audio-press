@@ -43,6 +43,8 @@ class BakedBook(
     val utterances: List<BakedUtterance>,
     /** True once every utterance has been baked. A player should only use complete bakes. */
     val isComplete: Boolean,
+    /** The voice settings text the bake was made with (the `settingsKey` given to [BookBaker.bake]), if recorded. */
+    val settingsKey: String? = null,
 ) {
     /** The start of each utterance in the whole book, in milliseconds. */
     private val startsMs: LongArray =

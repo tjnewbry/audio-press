@@ -9,6 +9,7 @@ import java.io.File
  * audiopress-bake <TAB> 1
  * format <TAB> wav
  * fingerprint <TAB> hex
+ * settings <TAB> voice settings text (optional)
  * utterances <TAB> count
  * u <TAB> index <TAB> file <TAB> segment <TAB> start <TAB> end <TAB> page <TAB> durationMs
  * complete <TAB> totalDurationMs
@@ -25,11 +26,13 @@ internal object BakeManifest {
         count: Int,
         utterances: List<BakedUtterance>,
         complete: Boolean,
+        settingsKey: String = "",
     ): String =
         buildString {
             append(MAGIC).append('\t').append(VERSION).append('\n')
             append("format\twav\n")
             append("fingerprint\t").append(fingerprint).append('\n')
+            if (settingsKey.isNotEmpty()) append("settings\t").append(settingsKey.replace('\t', ' ').replace('\n', ' ')).append('\n')
             append("utterances\t").append(count).append('\n')
             for (u in utterances) {
                 append("u\t${u.index}\t${u.fileName}\t${u.segmentIndex}\t${u.start}\t${u.end}\t${u.page}\t${u.durationMs}\n")
@@ -45,6 +48,7 @@ internal object BakeManifest {
         val lines = text.split('\n').filter { it.isNotEmpty() }
         if (lines.firstOrNull()?.split('\t') != listOf(MAGIC, VERSION)) return null
         var fingerprint: String? = null
+        var settingsKey: String? = null
         var count = -1
         var complete = false
         val utterances = mutableListOf<BakedUtterance>()
@@ -52,6 +56,7 @@ internal object BakeManifest {
             val parts = line.split('\t')
             when (parts[0]) {
                 "fingerprint" -> fingerprint = parts.getOrNull(1)
+                "settings" -> settingsKey = parts.getOrNull(1)
                 "utterances" -> count = parts.getOrNull(1)?.toIntOrNull() ?: return null
                 "complete" -> complete = true
                 "u" -> utterances += parseUtterance(parts) ?: return null
@@ -59,7 +64,7 @@ internal object BakeManifest {
         }
         if (fingerprint == null || count < 0) return null
         if (utterances.withIndex().any { (i, u) -> u.index != i }) return null
-        return BakedBook(folder, fingerprint, utterances, complete && utterances.size == count)
+        return BakedBook(folder, fingerprint, utterances, complete && utterances.size == count, settingsKey)
     }
 
     private fun parseUtterance(parts: List<String>): BakedUtterance? {
