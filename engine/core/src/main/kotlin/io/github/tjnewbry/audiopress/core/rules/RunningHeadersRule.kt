@@ -22,7 +22,7 @@ object RunningHeadersRule : CleanupRule {
     private const val WINDOW = 2
     private const val MIN_LETTERS = 3
 
-    private val DIGITS = Regex("""\d+""")
+    private val DIGITS = Regex("""[0-9]+""")
     private val PUNCTUATION = Regex("""[\p{P}\p{S}]""")
     private val WHITESPACE = Regex("""\s+""")
     private val ROMAN = Regex("""[ivxlcdm]+""")

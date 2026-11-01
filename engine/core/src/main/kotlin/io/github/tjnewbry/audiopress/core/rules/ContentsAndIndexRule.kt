@@ -21,7 +21,7 @@ object ContentsAndIndexRule : CleanupRule {
 
     /** A page number or roman numeral at the end of the line, after a space or dot leaders, optionally followed by more numbers. */
     private val PAGE_REFERENCE =
-        Regex("""(?:\.{2,}|\s)\s*(?:\d{1,4}|[ivxlcdm]{1,7})(?:\s*[,\x{2013}-]\s*\d{1,4})*\s*$""", RegexOption.IGNORE_CASE)
+        Regex("""(?:\.{2,}|\s)\s*(?:[0-9]{1,4}|[ivxlcdm]{1,7})(?:\s*[,\x{2013}\-]\s*[0-9]{1,4})*\s*$""", RegexOption.IGNORE_CASE)
 
     override fun apply(
         document: LayoutDocument,

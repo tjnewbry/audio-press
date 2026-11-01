@@ -21,7 +21,7 @@ object PageNumbersRule : CleanupRule {
 
     private val PAGE_NUMBER =
         Regex(
-            """[-\x{2013}\x{2014}(\[]?\s*(?:page\s+)?(?:\d{1,4}|[ivxlcdm]{1,7})(?:\s+of\s+\d{1,4})?\s*[-\x{2013}\x{2014})\]]?""",
+            """[\-\x{2013}\x{2014}(\[]?\s*(?:page\s+)?(?:[0-9]{1,4}|[ivxlcdm]{1,7})(?:\s+of\s+[0-9]{1,4})?\s*[\-\x{2013}\x{2014})\]]?""",
             RegexOption.IGNORE_CASE,
         )
 

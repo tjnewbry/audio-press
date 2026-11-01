@@ -76,6 +76,18 @@ A `SourcePage` has `index`, `width`, `height`, and `words`. A `SourceWord` has `
 
 `Converter.convert` throws `NoPagesSelectedException` (the page selection matches no pages) or `NoTextLayerException` (no selected page has text). A `TextSource` throws the others when it opens a file. The PDFBox source throws `InputNotFoundException`, `InputUnreadableException`, `NotAPdfException`, `CorruptPdfException`, `PdfEncryptedException`, and `ExtractionNotPermittedException`. All have messages meant for the user.
 
+## Android compatibility
+
+`core` is meant to run on Android 13 (API 33) and up. It was checked by listing every JDK class and method its compiled bytecode calls (including Kotlin standard library code inlined into it) and comparing them with the Android SDK's API list: it uses only `java.lang` and `java.util` basics (collections, `StringBuilder`, `Character`, `Math`, `String.format` and `lowercase` with `Locale.ROOT`), all available since API 24 or earlier. `ArchitectureTest` enforces the rules below.
+
+Rules for engine code in `core`:
+
+* Use only Kotlin, `core`'s own package, and `java.util.Locale`. Check any new JDK class against API 33 before adding it to `ALLOWED_IMPORTS` in `ArchitectureTest`. No `java.nio.file`, `java.time`, `java.util.stream`, `java.awt`, reflection, threads, or files.
+* The build compiles with `-Xjdk-release=17`, so Java 18+ methods do not compile. Android 13 has fewer Java 12 to 17 methods than the JDK (for example `String.formatted` and `Stream.toList` are missing), so keep to the older, plain APIs.
+* Regexes run on ICU on Android, not `java.util.regex`. Use `[0-9]` instead of `\d`, and avoid `\w`, `\b`, `\p{IsAlphabetic}`, `\p{javaLowerCase}`, `\R`, `\X`, `\h`, possessive quantifiers, and named groups. Write special characters as `\x{...}` and escape `-`, `{`, and `}` inside character classes. `\s` and `\S` are used, but they differ only for U+1680, U+2028, and U+2029, which real PDF text does not contain.
+
+The app must build with Java 17 bytecode support (Android Gradle Plugin 8 or newer, which also rewrites the string-concatenation and lambda `invokedynamic` calls that Kotlin emits).
+
 ## Using it from the app's build
 
 The engine is a separate Gradle build in `engine/`. The app can include it directly:

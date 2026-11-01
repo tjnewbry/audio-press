@@ -18,7 +18,7 @@ class PageSelection private constructor(
     companion object {
         val ALL = PageSelection(null, "all")
 
-        private val RANGE = Regex("""(\d+)(?:-(\d*))?""")
+        private val RANGE = Regex("""([0-9]+)(?:-([0-9]*))?""")
 
         /** Parses a page list, throwing [IllegalArgumentException] with a readable message when it is invalid. */
         fun parse(spec: String): PageSelection {

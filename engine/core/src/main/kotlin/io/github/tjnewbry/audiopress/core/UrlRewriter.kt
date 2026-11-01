@@ -8,7 +8,7 @@ object UrlRewriter {
     /** Opening punctuation, the address, then closing punctuation (including curly quotes). */
     private val URL =
         Regex(
-            """([(\[{"'\x{201C}\x{2018}]*)((?:https?://|www\.)\S+?)([.,;:!?)\]}"'\x{201D}\x{2019}]*)""",
+            """([(\[\{"'\x{201C}\x{2018}]*)((?:https?://|www\.)\S+?)([.,;:!?)\]\}"'\x{201D}\x{2019}]*)""",
             RegexOption.IGNORE_CASE,
         )
     private val SCHEME = Regex("""^https?://""", RegexOption.IGNORE_CASE)

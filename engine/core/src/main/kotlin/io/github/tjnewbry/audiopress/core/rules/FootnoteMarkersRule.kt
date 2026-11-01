@@ -23,7 +23,7 @@ object FootnoteMarkersRule : CleanupRule {
     private const val MIN_RAISE = 0.2f
 
     /** Digits, or the symbols asterisk, dagger, double dagger, section sign, and pilcrow. */
-    private val MARKER = Regex("""\d{1,3}|[*\x{2020}\x{2021}\x{00A7}\x{00B6}]{1,3}""")
+    private val MARKER = Regex("""[0-9]{1,3}|[*\x{2020}\x{2021}\x{00A7}\x{00B6}]{1,3}""")
 
     override fun apply(
         document: LayoutDocument,
