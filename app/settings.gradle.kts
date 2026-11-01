@@ -41,3 +41,6 @@ include(":audiopress")
 
 // pdf-source: reads PDFs on Android (the engine's TextSource), owned by the engine owner.
 include(":pdf-source")
+
+// bake: turns utterances into audio files with TextToSpeech (the Bake feature), owned by the engine owner for now.
+include(":bake")

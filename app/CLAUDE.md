@@ -5,6 +5,7 @@ The Android app that turns PDF books into audiobooks, using the engine to make e
 ## Ownership
 
 * **`app/pdf-source/`** (the Android PDF reader, which implements the engine's `TextSource`) belongs to the engine owner.
+* **`app/bake/`** (Bake: synthesizes utterances to audio files with `TextToSpeech`, writes the manifest, and maps playback positions to utterances; no UI) belongs to the engine owner for now. The app developer adds the Bake button and baked playback in `app/audiopress` through its public API (`BookBaker`, `BakedBook`).
 * **Everything else in `app/`** belongs to the app developer.
 * **`engine/`** is never edited from here. The API the app may use is [engine/docs/api.md](../engine/docs/api.md). Ask the engine owner for engine changes (or open a GitHub issue labeled `engine`); never copy or patch engine code to work around its API.
 
