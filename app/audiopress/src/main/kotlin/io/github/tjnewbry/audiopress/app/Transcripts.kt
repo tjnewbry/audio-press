@@ -1,23 +1,21 @@
 package io.github.tjnewbry.audiopress.app
 
-import io.github.tjnewbry.audiopress.core.ConversionOptions
-import io.github.tjnewbry.audiopress.core.Converter
-import io.github.tjnewbry.audiopress.core.TextSource
 import io.github.tjnewbry.audiopress.core.Transcript
 
-/** The transcript as text to speak: one string per paragraph or heading, as engine/docs/api.md describes. */
-fun Transcript.paragraphTexts(): List<String> =
-    segments.map { segment ->
-        buildString {
-            for (token in segment.tokens) {
-                if (isNotEmpty() && token.spaceBefore) append(' ')
-                append(token.text)
-            }
+/**
+ * The transcript as storable paragraphs: the text to speak (see engine/docs/api.md), the kind, and the page
+ * the first word came from. Segments with no words are dropped.
+ */
+fun Transcript.toStoredParagraphs(): List<StoredParagraph> =
+    segments
+        .filter { it.tokens.isNotEmpty() }
+        .map { segment ->
+            val text =
+                buildString {
+                    for (token in segment.tokens) {
+                        if (isNotEmpty() && token.spaceBefore) append(' ')
+                        append(token.text)
+                    }
+                }
+            StoredParagraph(segment.kind, segment.tokens.first().page, text)
         }
-    }
-
-/** Runs the engine over [source]. This blocks, so call it off the main thread. */
-fun convertToParagraphs(
-    source: TextSource,
-    sourceName: String,
-): List<String> = Converter().convert(source, sourceName, ConversionOptions()).transcript.paragraphTexts()

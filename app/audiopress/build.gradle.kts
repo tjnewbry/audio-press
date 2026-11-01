@@ -24,6 +24,12 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+    packaging {
+        resources {
+            // BouncyCastle (used by the PDF reader) ships the same license file in three jars.
+            pickFirsts += "META-INF/LICENSE.md"
+        }
+    }
     buildFeatures {
         compose = true
     }
@@ -39,6 +45,9 @@ kotlin {
 dependencies {
     // The engine (../engine, included in settings.gradle.kts). Use it only through engine/docs/api.md.
     implementation("io.github.tjnewbry.audiopress:core:0.1.0")
+
+    // The Android PDF reader, which implements the engine's TextSource (owned by the engine owner).
+    implementation(project(":pdf-source"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -44,7 +44,7 @@ The prototype has exactly these three features.
 | Sprint | Goal | Status |
 |--------|------|--------|
 | A1. Setup and integration | The Android project (minimum API 33) builds and runs on the emulator, calls the engine through a stand-in `TextSource`, and speaks hardcoded text. In parallel, research how to read PDFs on Android. | Done for the app side: builds, tests pass, runs on the Android 13 emulator (sample transcript from the engine shown and spoken, play/pause works). Awaiting the owner's check; the PDF research is separate. |
-| A2. Import and library | The Android PDF reader, the import flow, storage, and the library screen. | Not started |
+| A2. Import and library | The Android PDF reader, the import flow, storage, and the library screen. | Done for the app side: import from the file picker with a progress bar and Cancel (text-based PDFs; scanned, password-protected, damaged, and empty PDFs show clear messages), storage in app-private `files/books/<id>/`, library list, tap to open in the reader with Speak. Checked on the Android 13 emulator with generated PDFs. Awaiting the owner's check on a phone with real books. |
 | A3. Live player | Live playback, captions with tap-a-line to jump, timestamps, and saved progress. | Not started |
 | A4. Bake | Turning a transcript into audio files, and playing baked books. | Not started |
 | A5. Hardening | Error handling, testing with real books, and the owner's verification. | Not started |

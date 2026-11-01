@@ -1,6 +1,6 @@
 # App: Instructions for Claude
 
-The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: Sprint A1 built (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
+The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: Sprints A1 and A2 built (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
 
 ## Ownership
 
@@ -36,5 +36,7 @@ Run from `app/`. The engine's build needs JDK 25: the engine's Gradle toolchain 
 adb install -r audiopress/build/outputs/apk/debug/audiopress-debug.apk
 adb shell am start -n io.github.tjnewbry.audiopress.app/.MainActivity
 ```
+
+To test import without real books, push a generated PDF with `adb push file.pdf /sdcard/Download/` (in Git Bash set `MSYS_NO_PATHCONV=1` first), then use Import PDF and pick it from Downloads. Imported books live in `files/books/<id>/` (`book.properties` and `transcript.txt`; format in `BookStore.kt`).
 
 `adb` and the emulator are in the SDK (`platform-tools`, `emulator`). Start the emulator with `emulator -avd audio-press-api33 -no-snapshot-save -no-boot-anim`.

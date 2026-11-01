@@ -5,31 +5,27 @@ import io.github.tjnewbry.audiopress.core.Converter
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SampleTranscriptTest {
     private val expected = SAMPLE_PAGES.flatMap { listOfNotNull(it.heading) + it.paragraphs }
 
-    @Test
-    fun `the engine turns the sample source into its heading and paragraphs`() {
-        val paragraphs = SampleTextSource().use { convertToParagraphs(it, "sample") }
+    private fun convert() = SampleTextSource().use { Converter().convert(it, "sample", ConversionOptions()) }
 
-        assertEquals(expected, paragraphs)
+    @Test
+    fun `the engine turns the sample source into its heading and paragraphs, without page numbers`() {
+        val paragraphs = convert().transcript.toStoredParagraphs()
+
+        assertEquals(expected, paragraphs.map { it.text })
     }
 
     @Test
-    fun `the heading is a heading and the page numbers are removed`() {
-        val result = SampleTextSource().use { Converter().convert(it, "sample", ConversionOptions()) }
+    fun `stored paragraphs keep their kind and the page they started on`() {
+        val paragraphs = convert().transcript.toStoredParagraphs()
 
-        assertEquals(
-            SegmentKind.HEADING,
-            result.transcript.segments
-                .first()
-                .kind,
-        )
-        assertEquals(expected.size, result.transcript.segments.size)
-        assertFalse(result.transcript.paragraphTexts().any { it.trim() in setOf("1", "2") })
+        assertEquals(SegmentKind.HEADING, paragraphs.first().kind)
+        assertEquals(listOf(SegmentKind.PARAGRAPH), paragraphs.drop(1).map { it.kind }.distinct())
+        assertEquals(listOf(1, 1, 1, 2, 2), paragraphs.map { it.page })
     }
 
     @Test
