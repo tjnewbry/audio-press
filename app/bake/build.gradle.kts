@@ -29,6 +29,9 @@ dependencies {
     // The engine (../engine, included in settings.gradle.kts). Utterance and CancellationToken are part of this module's API.
     api("io.github.tjnewbry.audiopress:core:0.1.0")
 
+    // Runs the Kokoro models. Exactly 1.28.0: later versions add the INTERNET permission and telemetry that is on by default.
+    implementation(libs.onnxruntime.android)
+
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
 

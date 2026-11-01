@@ -72,12 +72,7 @@ class FakeKokoroService(
     }
 
     private companion object {
-        /** The sizes the button shows: about 120, 205, and 355 MB with the voices file. */
-        val APPROXIMATE_BYTES =
-            mapOf(
-                KokoroQuality.LITE to 120L * 1024 * 1024,
-                KokoroQuality.MEDIUM to 205L * 1024 * 1024,
-                KokoroQuality.HEAVY to 355L * 1024 * 1024,
-            )
+        /** The real download sizes, so the button shows the real numbers (121, 206, and 354 MB). */
+        val APPROXIMATE_BYTES = KokoroQuality.entries.associateWith { GithubKokoroCatalog.totalBytes(it) }
     }
 }

@@ -119,3 +119,6 @@ data class KokoroModelFiles(
     val voices: java.io.File,
     val quality: KokoroQuality,
 )
+
+/** The bytes still to download for [quality] as the whole decimal megabytes the button shows (121, 206, 354 at first). */
+fun KokoroService.downloadSizeMegabytes(quality: KokoroQuality): Int = downloadSizeBytes(quality).toDecimalMegabytes()

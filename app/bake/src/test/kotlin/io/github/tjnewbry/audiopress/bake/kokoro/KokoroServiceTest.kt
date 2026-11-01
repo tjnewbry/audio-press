@@ -100,7 +100,7 @@ class KokoroServiceTest {
         val service = FakeKokoroService(downloadMillis = 0, steps = 4)
         val fractions = mutableListOf<Float>()
         assertFalse(service.isDownloaded(KokoroQuality.MEDIUM))
-        assertEquals(205L * 1024 * 1024, service.downloadSizeBytes(KokoroQuality.MEDIUM))
+        assertEquals(205_679_185L, service.downloadSizeBytes(KokoroQuality.MEDIUM))
 
         service.download(KokoroQuality.MEDIUM) { fractions += it.fraction }
 

@@ -1,6 +1,11 @@
 package io.github.tjnewbry.audiopress.bake.kokoro
 
-/** The three downloadable qualities of Kokoro-82M v1.0. All share one voices file, so one download gives every voice. */
+/**
+ * The three downloadable qualities of Kokoro-82M v1.0. All share one voices file, so one download gives every voice.
+ *
+ * [MEDIUM] is not half precision, whatever its file name says: `kokoro-v1.0.fp16.onnx` is a mixed uint8/int8 model
+ * (taylorchu's `kokoro-quant.onnx`). The release names the file that way, so the name stays; the app calls it Medium.
+ */
 enum class KokoroQuality(
     /** Stable id for settings keys and file names. */
     val id: String,

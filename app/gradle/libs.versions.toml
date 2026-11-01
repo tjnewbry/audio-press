@@ -22,6 +22,8 @@ junit = { module = "junit:junit", version.ref = "junit" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version = "2.0.27.0" }
 androidx-test-runner = { module = "androidx.test:runner", version = "1.7.0" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version = "1.3.0" }
+# ONNX Runtime for the Kokoro voices (MIT). Pinned to 1.28.0 on purpose: 1.29 and later add INTERNET permission and telemetry on by default.
+onnxruntime-android = { module = "com.microsoft.onnxruntime:onnxruntime-android", version = "1.28.0" }
 # Replaces the BouncyCastle 1.72 that pdfbox-android pulls in (known CVEs); see app/pdf-source/build.gradle.kts.
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version = "1.86" }
 bouncycastle-pkix = { module = "org.bouncycastle:bcpkix-jdk18on", version = "1.86" }

@@ -141,7 +141,7 @@ class KokoroModelStore(
         if (freeSpace(root) < remaining + SPACE_MARGIN_BYTES) {
             throw KokoroDownloadException(
                 DownloadFailure.DISK_FULL,
-                "There is not enough free storage for the voice files (${remaining / MB + 1} MB needed).",
+                "There is not enough free storage for the voice files (${remaining.toDecimalMegabytes()} MB needed).",
             )
         }
         var finished = 0L
@@ -273,7 +273,7 @@ class KokoroModelStore(
         const val PART = ".part"
         const val BUFFER_BYTES = 64 * 1024
         const val REPORT_BYTES = 256 * 1024L
-        const val MB = 1024 * 1024L
-        const val SPACE_MARGIN_BYTES = 64 * MB
+
+        const val SPACE_MARGIN_BYTES = 64L * 1024 * 1024
     }
 }
