@@ -60,6 +60,12 @@ data class SourcePage(
 interface TextSource : AutoCloseable {
     val pageCount: Int
 
+    /**
+     * The document's own title from its metadata, trimmed, or null when there is none or it is junk such as
+     * "Untitled" (see [DocumentTitle.clean]). Sources that cannot tell keep the default, null.
+     */
+    val title: String? get() = null
+
     /** Reads one page. [pageIndex] is 1-based. */
     fun readPage(pageIndex: Int): SourcePage
 }

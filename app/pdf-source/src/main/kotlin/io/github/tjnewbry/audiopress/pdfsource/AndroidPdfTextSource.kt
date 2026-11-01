@@ -11,6 +11,7 @@ import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
 import io.github.tjnewbry.audiopress.core.Box
 import io.github.tjnewbry.audiopress.core.CorruptPdfException
+import io.github.tjnewbry.audiopress.core.DocumentTitle
 import io.github.tjnewbry.audiopress.core.ExtractionNotPermittedException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.InputUnreadableException
@@ -43,6 +44,9 @@ class AndroidPdfTextSource private constructor(
 ) : TextSource {
     private val collector = WordCollector()
 
+    /** The title from the PDF's metadata (see [TextSource.title]), or null. */
+    override val title: String? = readTitle(document)
+
     override val pageCount: Int get() = document.numberOfPages
 
     override fun readPage(pageIndex: Int): SourcePage {
@@ -64,6 +68,20 @@ class AndroidPdfTextSource private constructor(
             throw CorruptPdfException(name, e)
         }
     }
+
+    private fun readTitle(document: PDDocument): String? =
+        try {
+            DocumentTitle.clean(document.documentInformation?.title)
+                ?: document.documentCatalog.metadata
+                    ?.createInputStream()
+                    ?.use {
+                        it.readNBytes(XMP_LIMIT_BYTES)
+                    }?.let { DocumentTitle.fromXmp(String(it, Charsets.UTF_8)) }
+        } catch (e: IOException) {
+            null // A title is optional: unreadable metadata is not an error.
+        } catch (e: RuntimeException) {
+            null
+        }
 
     override fun close() {
         try {
@@ -203,6 +221,9 @@ class AndroidPdfTextSource private constructor(
 
         /** PDF files may have a few bytes of junk before the header; readers accept it within the first 1 KB. */
         private const val HEADER_SEARCH_BYTES = 1024
+
+        /** Only the start of the XMP packet is searched for a title. */
+        private const val XMP_LIMIT_BYTES = 64 * 1024
     }
 }
 

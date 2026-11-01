@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.common.PDMetadata
 import com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission
 import com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import io.github.tjnewbry.audiopress.core.ConversionOptions
@@ -210,6 +211,41 @@ class AndroidPdfTextSourceTest {
         assertFalse(spoken.contains("Test Book"), "the running header is removed")
         assertTrue(result.transcript.wordCount > 3 * 20 * 10)
         assertEquals(emptyList(), result.warnings)
+    }
+
+    @Test
+    fun theTitleComesFromTheDocumentInformationTrimmed() {
+        val file =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(folder.newFile("titled.pdf")) {
+                it.documentInformation.title =
+                    "  A Titled Book "
+            }
+
+        assertEquals("A Titled Book", AndroidPdfTextSource.open(context, file).use { it.title })
+    }
+
+    @Test
+    fun aPdfWithoutATitleOrWithAJunkOneHasANullTitle() {
+        val none = pdf("none.pdf") { page { text("Body", x = 72f, y = 100f) } }
+        val junk =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(folder.newFile("junk.pdf")) {
+                it.documentInformation.title =
+                    "Microsoft Word - draft.docx"
+            }
+
+        assertEquals(null, AndroidPdfTextSource.open(context, none).use { it.title })
+        assertEquals(null, AndroidPdfTextSource.open(context, junk).use { it.title })
+    }
+
+    @Test
+    fun theTitleFallsBackToXmpMetadata() {
+        val xmp = "<x:xmpmeta><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">From The XMP</rdf:li></rdf:Alt></dc:title></x:xmpmeta>"
+        val file =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(folder.newFile("xmp.pdf")) { document ->
+                document.documentCatalog.metadata = PDMetadata(document, xmp.byteInputStream())
+            }
+
+        assertEquals("From The XMP", AndroidPdfTextSource.open(context, file).use { it.title })
     }
 
     @Test

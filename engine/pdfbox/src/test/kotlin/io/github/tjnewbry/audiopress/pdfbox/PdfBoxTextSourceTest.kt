@@ -6,6 +6,7 @@ import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
 import io.github.tjnewbry.audiopress.testing.FixturePdf
 import io.github.tjnewbry.audiopress.testing.fixturePdf
+import org.apache.pdfbox.pdmodel.common.PDMetadata
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.junit.jupiter.api.io.TempDir
@@ -126,6 +127,41 @@ class PdfBoxTextSourceTest {
             }
 
         assertFailsWith<PdfEncryptedException> { PdfBoxTextSource.open(pdf) }
+    }
+
+    @Test
+    fun `the title comes from the document information, trimmed`() {
+        val pdf =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(dir.resolve("titled.pdf")) {
+                it.documentInformation.title =
+                    "  A Titled Book "
+            }
+
+        assertEquals("A Titled Book", PdfBoxTextSource.open(pdf).use { it.title })
+    }
+
+    @Test
+    fun `a PDF without a title, or with a junk one, has a null title`() {
+        val none = fixturePdf(dir.resolve("none.pdf")) { page { text("Body", x = 72f, y = 100f) } }
+        val junk =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(dir.resolve("junk.pdf")) {
+                it.documentInformation.title =
+                    "Microsoft Word - draft.docx"
+            }
+
+        assertEquals(null, PdfBoxTextSource.open(none).use { it.title })
+        assertEquals(null, PdfBoxTextSource.open(junk).use { it.title })
+    }
+
+    @Test
+    fun `the title falls back to XMP metadata`() {
+        val xmp = "<x:xmpmeta><dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">From The XMP</rdf:li></rdf:Alt></dc:title></x:xmpmeta>"
+        val pdf =
+            FixturePdf().apply { page { text("Body", x = 72f, y = 100f) } }.save(dir.resolve("xmp.pdf")) { document ->
+                document.documentCatalog.metadata = PDMetadata(document, xmp.byteInputStream())
+            }
+
+        assertEquals("From The XMP", PdfBoxTextSource.open(pdf).use { it.title })
     }
 
     private companion object {

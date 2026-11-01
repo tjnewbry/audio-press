@@ -105,12 +105,14 @@ This is what an Android app must provide, because PDFBox does not run on Android
 ```kotlin
 interface TextSource : AutoCloseable {
     val pageCount: Int
+    val title: String?                          // optional: the document's own title, or null (the default)
     fun readPage(pageIndex: Int): SourcePage   // 1-based
 }
 ```
 
 A `SourcePage` has `index`, `width`, `height`, and `words`. A `SourceWord` has `text`, `box`, `baseline`, `fontSize`, `horizontal`, and `joinsPrevious`. The cleanup rules depend on every one of these, so a source that cannot provide them cannot support all the rules.
 
+* **`title`** is optional (the default is null). A source that can read the document's title returns it trimmed, with runs of spaces tidied, and returns null when there is none or it is junk: blank, `Untitled`, `Title`, `Microsoft Word - notes.docx`, or anything ending in a file extension such as `.docx`. `DocumentTitle.clean` does this and `DocumentTitle.fromXmp` reads the XMP `dc:title` of a metadata packet; both PDFBox sources use the document information dictionary first and XMP second. The app can fall back to the file name.
 * **Coordinates** are display space: points (1/72 inch), origin at the top-left of the page as a viewer shows it, y increasing downward, after any page rotation.
 * **`baseline` and `fontSize`** are what the header, footer, page number, footnote, and heading rules compare. The engine finds the body font size itself, so absolute sizes do not matter, but relative sizes and baselines must be right.
 * **`horizontal`** is false for rotated or vertical text, which the engine removes.
