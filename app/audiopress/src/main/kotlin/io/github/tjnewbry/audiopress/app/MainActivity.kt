@@ -70,12 +70,15 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 val reader = library.reader
                 BackHandler(enabled = reader != null) { library.closeReader() }
+                // Declared after the one above, so it wins: back leaves the voice or progress screen first.
+                BackHandler(enabled = reader != null && (reader.showVoices || reader.showProgress)) { reader?.back() }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val modifier = Modifier.padding(padding).padding(horizontal = 16.dp)
-                    if (reader == null) {
-                        LibraryScreen(library, modifier)
-                    } else {
-                        ReaderScreen(reader, library::closeReader, modifier)
+                    when {
+                        reader == null -> LibraryScreen(library, modifier)
+                        reader.showProgress -> BakeProgressScreen(reader.bakeState, reader::cancelBake, modifier)
+                        reader.showVoices -> VoiceScreen(reader, modifier)
+                        else -> ReaderScreen(reader, library::closeReader, modifier)
                     }
                 }
             }
@@ -304,13 +307,27 @@ private fun BakeSection(session: ReaderSession) {
 
         is BakeState.NotBaked -> {
             val label = if (state.done > 0) "Resume baking (${state.done} of ${state.total} done)" else "Bake audio for this book"
-            OutlinedButton(onClick = session::startBake, modifier = Modifier.fillMaxWidth()) { Text(label) }
+            OutlinedButton(onClick = session::openVoiceScreen, modifier = Modifier.fillMaxWidth()) { Text(label) }
+        }
+
+        is BakeState.Downloading -> {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(if (state.cancelling) "Cancelling..." else "Downloading ${state.quality.label}...")
+                LinearProgressIndicator(progress = { state.fraction }, modifier = Modifier.fillMaxWidth())
+                TextButton(onClick = session::cancelBake, enabled = !state.cancelling) { Text("Cancel") }
+            }
         }
 
         is BakeState.Baking -> {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 val fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f
-                Text(if (state.cancelling) "Cancelling..." else "Baking audio: ${state.done} of ${state.total}")
+                val using =
+                    state.voice
+                        ?.voice
+                        ?.name
+                        ?.let { " using $it" }
+                        .orEmpty()
+                Text(if (state.cancelling) "Cancelling..." else "Baking audio$using: ${state.done} of ${state.total}")
                 LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
                 TextButton(onClick = session::cancelBake, enabled = !state.cancelling) { Text("Cancel baking") }
             }
@@ -319,7 +336,7 @@ private fun BakeSection(session: ReaderSession) {
         is BakeState.Failed -> {
             Column {
                 Text(state.message, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = session::startBake) { Text("Try again") }
+                TextButton(onClick = session::openVoiceScreen) { Text("Try again") }
             }
         }
 

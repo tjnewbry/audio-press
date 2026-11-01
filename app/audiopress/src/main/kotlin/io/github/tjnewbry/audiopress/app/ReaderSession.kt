@@ -85,6 +85,7 @@ class ReaderSession(
         bake.listener = { state ->
             main.post {
                 bakeState = state
+                if (state !is BakeState.Baking && state !is BakeState.Downloading) showProgress = false
                 if (bakedPlayer == null) bakedPlayer = createBakedPlayer(switching.position)
             }
         }
@@ -140,7 +141,44 @@ class ReaderSession(
         switcher?.pause()
     }
 
-    fun startBake() = bake.start()
+    /** True while the voice screen is open (it replaces the reader). */
+    var showVoices: Boolean by mutableStateOf(false)
+        private set
+
+    /** True while the full-screen download and bake progress is showing. */
+    var showProgress: Boolean by mutableStateOf(false)
+        private set
+
+    /** Bake was tapped: resume an interrupted bake with its voice, or open the voice screen to choose one. */
+    fun openVoiceScreen() {
+        val state = bakeState
+        val interrupted = (state is BakeState.NotBaked && state.done > 0) || state is BakeState.Failed
+        if (interrupted && bake.savedChoice != null) {
+            showProgress = true
+            bake.start()
+        } else {
+            showVoices = true
+        }
+    }
+
+    /** A voice was chosen on the voice screen: show the progress and start. */
+    fun chooseVoice(choice: VoiceChoice) {
+        showVoices = false
+        showProgress = true
+        bake.start(choice)
+    }
+
+    /** Leaves the voice screen or the progress screen (a bake carries on). Returns false when neither was showing. */
+    fun back(): Boolean {
+        if (!showVoices && !showProgress) return false
+        showVoices = false
+        showProgress = false
+        return true
+    }
+
+    fun isModelDownloaded(quality: VoiceQuality): Boolean = bake.isModelDownloaded(quality)
+
+    fun downloadSizeBytes(quality: VoiceQuality): Long = bake.downloadSizeBytes(quality)
 
     fun cancelBake() = bake.cancel()
 

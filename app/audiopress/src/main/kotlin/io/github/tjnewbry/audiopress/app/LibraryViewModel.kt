@@ -71,7 +71,7 @@ class LibraryViewModel(
 
     // Baking has its own thread (it is long), and its controllers outlive the reader screen so a bake carries on.
     private val bakeWorker = Executors.newSingleThreadExecutor { Thread(it, "bake") }
-    private val baker: BookBaker = ModuleBaker(application)
+    private val baker: BakeService = KokoroBakeService() // simulated voices until the Kokoro runtime lands in :bake
     private val bakes = mutableMapOf<String, BookBakeController>()
 
     init {
@@ -175,7 +175,7 @@ class LibraryViewModel(
         utterances: List<Utterance>,
     ): BookBakeController =
         bakes.getOrPut(book.id) {
-            BookBakeController(utterances, store.audioFolder(book.id), baker, bakeWorker)
+            BookBakeController(utterances, store.audioFolder(book.id), baker, bakeWorker, choiceFile = store.voiceFile(book.id))
         }
 
     private fun refresh() {

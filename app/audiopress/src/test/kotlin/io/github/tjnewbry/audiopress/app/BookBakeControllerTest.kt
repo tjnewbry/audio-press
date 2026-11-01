@@ -21,18 +21,45 @@ class BookBakeControllerTest {
     /** A baker that writes one tiny file per text, can be told to stop after some clips, and can fail. */
     private class FakeBaker(
         override val available: Boolean = true,
-    ) : BookBaker {
+    ) : BakeService {
+        val downloaded = VoiceQuality.entries.toMutableSet()
+        val downloads = mutableListOf<VoiceQuality>()
+        val baked = mutableListOf<VoiceChoice>()
+        var cancelDownload = false
+        var size = 100L * 1024 * 1024
         var stopAfter: Int? = null // cancel (as a user would) once this many clips exist
         var failAt: Int? = null
         var onFail: () -> Unit = {}
         val synthesized = mutableListOf<String>()
 
+        override fun isModelDownloaded(quality: VoiceQuality) = quality in downloaded
+
+        override fun downloadSizeBytes(quality: VoiceQuality) = if (quality in downloaded) 0L else size
+
+        override fun downloadModel(
+            quality: VoiceQuality,
+            cancellation: CancellationToken,
+            onProgress: (Float) -> Unit,
+        ) {
+            onProgress(0f)
+            if (cancelDownload) {
+                cancellation.cancel()
+                throw BakeCancelledException()
+            }
+            onProgress(0.5f)
+            onProgress(1f)
+            downloads += quality
+            downloaded += quality
+        }
+
         override fun bake(
             utterances: List<Utterance>,
             folder: File,
+            voice: VoiceChoice,
             cancellation: CancellationToken,
             onProgress: (Int, Int) -> Unit,
         ) {
+            baked += voice
             folder.mkdirs()
             utterances.forEachIndexed { i, utterance ->
                 val text = utterance.text
@@ -63,8 +90,11 @@ class BookBakeControllerTest {
 
     private var free = Long.MAX_VALUE
 
-    private fun controller(baker: BookBaker) =
-        BookBakeController(texts, audio, baker, now, freeSpace = { free }).also {
+    private val choice = VoiceChoice("af_bella", VoiceQuality.LITE)
+    private val choiceFile get() = File(folder.root, "voice.txt")
+
+    private fun controller(baker: BakeService) =
+        BookBakeController(texts, audio, baker, now, freeSpace = { free }, choiceFile = choiceFile).also {
             it.listener =
                 { s -> states += s }
         }
@@ -81,7 +111,7 @@ class BookBakeControllerTest {
     fun `baking reports progress and ends baked with its size on disk`() {
         val controller = controller(FakeBaker())
 
-        controller.start()
+        controller.start(choice)
 
         val progress = states.filterIsInstance<BakeState.Baking>().map { it.done }
         assertEquals(listOf(0, 1, 2, 3, 4), progress)
@@ -95,12 +125,12 @@ class BookBakeControllerTest {
         val baker = FakeBaker().apply { stopAfter = 2 }
         val controller = controller(baker)
 
-        controller.start()
-        assertEquals(BakeState.NotBaked(2, 4), controller.state)
+        controller.start(choice)
+        assertEquals(BakeState.NotBaked(2, 4, choice), controller.state)
         assertNull(controller.clips)
 
         baker.stopAfter = null
-        controller.start()
+        controller.start(choice)
         assertEquals(listOf("one", "two", "three", "four"), baker.synthesized) // nothing was made twice
         assertTrue(controller.state is BakeState.Baked)
     }
@@ -110,33 +140,33 @@ class BookBakeControllerTest {
         val baker = FakeBaker().apply { failAt = 2 }
         val controller = controller(baker)
 
-        controller.start()
+        controller.start(choice)
         val failed = assertNotNull(controller.state as? BakeState.Failed)
         assertEquals(2, failed.done)
         assertTrue("continues where it left off" in failed.message)
 
         baker.failAt = null
-        controller.start()
+        controller.start(choice)
         assertTrue(controller.state is BakeState.Baked)
     }
 
     @Test
     fun `a book that is already baked is found when the controller is made`() {
         val baker = FakeBaker()
-        controller(baker).start()
+        controller(baker).start(choice)
 
         val reopened = BookBakeController(texts, audio, baker, now)
 
         assertTrue(reopened.state is BakeState.Baked)
         assertEquals(4, reopened.clips?.size)
-        reopened.start() // nothing to do
+        reopened.start(choice) // nothing to do
         assertEquals(4, baker.synthesized.size)
     }
 
     @Test
     fun `clips that do not match the book's text are not used`() {
         val baker = FakeBaker()
-        controller(baker).start()
+        controller(baker).start(choice)
 
         val changed = BookBakeController(texts.take(2), audio, baker, now)
 
@@ -149,9 +179,9 @@ class BookBakeControllerTest {
         val controller = BookBakeController(texts, audio, UnavailableBaker, now)
 
         assertEquals(BakeState.Unavailable, controller.state)
-        controller.start()
+        controller.start(choice)
         assertEquals(BakeState.Unavailable, controller.state)
-        assertFailsWith<UnsupportedOperationException> { UnavailableBaker.bake(texts, audio, CancellationToken()) { _, _ -> } }
+        assertFailsWith<UnsupportedOperationException> { UnavailableBaker.bake(texts, audio, choice, CancellationToken()) { _, _ -> } }
     }
 
     @Test
@@ -160,7 +190,7 @@ class BookBakeControllerTest {
         val baker = FakeBaker()
         val controller = controller(baker)
 
-        controller.start()
+        controller.start(choice)
 
         val failed = assertNotNull(controller.state as? BakeState.Failed)
         assertTrue("Not enough free storage" in failed.message)
@@ -169,7 +199,7 @@ class BookBakeControllerTest {
         assertTrue(!audio.exists())
 
         free = Long.MAX_VALUE
-        controller.start()
+        controller.start(choice)
         assertTrue(controller.state is BakeState.Baked)
     }
 
@@ -180,29 +210,30 @@ class BookBakeControllerTest {
         free = 100L * 1024 * 1024 // enough to start
         baker.onFail = { free = 1024 } // and then the disk fills up
 
-        controller.start()
+        controller.start(choice)
         assertTrue("Not enough free storage" in assertNotNull(controller.state as? BakeState.Failed).message)
 
         free = Long.MAX_VALUE
         baker.onFail = {}
-        controller.start()
+        controller.start(choice)
         assertTrue("continues where it left off" in assertNotNull(controller.state as? BakeState.Failed).message)
     }
 
     @Test
     fun `a problem with its own message is shown as it is`() {
         val baker =
-            object : BookBaker by FakeBaker() {
+            object : BakeService by FakeBaker() {
                 override fun bake(
                     utterances: List<Utterance>,
                     folder: File,
+                    voice: VoiceChoice,
                     cancellation: CancellationToken,
                     onProgress: (Int, Int) -> Unit,
                 ): Unit = throw BakeProblem("No voice here")
             }
         val controller = controller(baker)
 
-        controller.start()
+        controller.start(choice)
 
         assertEquals("No voice here", assertNotNull(controller.state as? BakeState.Failed).message)
     }
@@ -224,5 +255,93 @@ class BookBakeControllerTest {
 
         assertEquals(123L, folderSize(audio))
         assertEquals(0L, folderSize(File(folder.root, "nothing")))
+    }
+
+    @Test
+    fun `a model that is not on the phone is downloaded first, with progress, then the book is baked`() {
+        val baker = FakeBaker().apply { downloaded.clear() }
+        val controller = controller(baker)
+        assertEquals(false, controller.isModelDownloaded(VoiceQuality.LITE))
+
+        controller.start(choice)
+
+        val downloading = states.filterIsInstance<BakeState.Downloading>()
+        assertEquals(listOf(0f, 0.5f, 1f), downloading.map { it.fraction }.distinct())
+        assertEquals(VoiceQuality.LITE, downloading.first().quality)
+        assertEquals(listOf(VoiceQuality.LITE), baker.downloads)
+        assertEquals(listOf(choice), baker.baked)
+        assertTrue(controller.state is BakeState.Baked)
+        // The progress screen reads: downloading comes before baking.
+        assertTrue(states.indexOfFirst { it is BakeState.Downloading } < states.indexOfFirst { it is BakeState.Baking })
+    }
+
+    @Test
+    fun `a model that is already here is not downloaded again`() {
+        val baker = FakeBaker()
+        val controller = controller(baker)
+
+        controller.start(choice)
+
+        assertEquals(emptyList(), baker.downloads)
+        assertTrue(states.none { it is BakeState.Downloading })
+    }
+
+    @Test
+    fun `cancelling the download leaves the book not baked and the model not downloaded`() {
+        val baker = FakeBaker().apply { downloaded.clear() }
+        baker.cancelDownload = true
+        val controller = controller(baker)
+
+        controller.start(choice)
+
+        assertEquals(BakeState.NotBaked(0, 4, choice), controller.state)
+        assertEquals(false, controller.isModelDownloaded(VoiceQuality.LITE))
+        assertEquals(emptyList(), baker.baked)
+    }
+
+    @Test
+    fun `the space check counts the model that has to be downloaded`() {
+        val baker = FakeBaker().apply { downloaded.clear() }
+        free = 100L * 1024 * 1024 // enough for the tiny book, not for a 100 MB model plus the margin
+        val controller = controller(baker)
+
+        controller.start(choice)
+
+        val failed = assertNotNull(controller.state as? BakeState.Failed)
+        assertTrue("Not enough free storage" in failed.message)
+        assertEquals(emptyList(), baker.downloads)
+    }
+
+    @Test
+    fun `without a voice nothing starts, and the voice of an earlier bake is remembered across restarts`() {
+        val baker = FakeBaker().apply { stopAfter = 2 }
+        val controller = controller(baker)
+        controller.start() // no voice chosen, none saved
+        assertEquals(BakeState.NotBaked(0, 4, null), controller.state)
+
+        controller.start(choice)
+        assertEquals(BakeState.NotBaked(2, 4, choice), controller.state)
+
+        val restarted = controller(baker) // a new app run, same files
+        assertEquals(choice, restarted.savedChoice)
+        assertEquals(BakeState.NotBaked(2, 4, choice), restarted.state)
+        baker.stopAfter = null
+        restarted.start() // resume with the saved voice
+        assertTrue(restarted.state is BakeState.Baked)
+        assertEquals(listOf(choice, choice), baker.baked)
+    }
+
+    @Test
+    fun `a different voice starts the book over`() {
+        val baker = FakeBaker().apply { stopAfter = 2 }
+        val controller = controller(baker)
+        controller.start(choice)
+        baker.stopAfter = null
+        val other = VoiceChoice("am_santa", VoiceQuality.LITE)
+
+        controller.start(other)
+
+        assertEquals(other, controller.savedChoice)
+        assertEquals(listOf(choice, other), baker.baked)
     }
 }

@@ -1,6 +1,6 @@
 # App: Instructions for Claude
 
-The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: sprints A1 to A5 are built; the owner's check on a real phone with real books is outstanding (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
+The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: sprints A1 to A5 are built (the owner's check on a real phone with real books is outstanding); sprint A6, Kokoro voices for Bake, is in progress (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
 
 ## Ownership
 
