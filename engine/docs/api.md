@@ -39,10 +39,11 @@ for (segment in result.transcript.segments) {
 |------|------------|
 | `Converter` | `convert(source, sourceName, options, cancellation = null, onProgress = {})` runs the whole pipeline and returns a `ConversionResult`. It holds no state. The last two parameters are optional; see [Progress and cancellation](#progress-and-cancellation). |
 | `ConversionProgress`, `ConversionStage`, `CancellationToken` | Progress reports and the cancel switch. |
+| `SpeechChunker`, `Utterance`, `SpokenWord`, `TextRange` | Splits a `Transcript` into pieces for text to speech and maps TTS offsets back to words; see [Speaking a transcript](#speaking-a-transcript). |
 | `ConversionOptions` | `pages: PageSelection`, `pageMarkers: PageMarkers`, `urls: UrlMode`, `disabledRules: Set<RuleId>`. Everything has a default. |
 | `ConversionResult` | `transcript`, `removals` (everything removed, with the rule and reason), `warnings`, and `document` (the page layout). |
 | `Transcript` | `segments: List<Segment>` and `wordCount`. |
-| `Segment` | `kind` (`PARAGRAPH` or `HEADING`) and `tokens: List<Token>`. |
+| `Segment` | `kind` (`PARAGRAPH` or `HEADING`), `tokens: List<Token>`, and `text`, the words joined with spaces. |
 | `Token` | One word: `text`, `spaceBefore`, `spans`, and `page`. A word hyphenated across a line or page break is one token with two `Span`s. |
 | `Span` | `page` and `box`, where the word was on the page. See [word positions](#word-positions). |
 | `Warning` | `page` and `message`. Today the only warning is a page with no text layer. |
@@ -70,6 +71,32 @@ val result =
 * **Reports.** `READING` reports `done` of `total` pages (`total` is the number of *selected* pages), once at 0 and then after every page. `ANALYZING` then reports one step per enabled cleanup rule plus one for the paragraph assembly. Within a stage `done` only increases and the last report has `done == total`. `fraction` (0 to 1) gives reading 95 percent of the bar, because it is almost all the time.
 * **Threading.** `onProgress` runs on the thread that called `convert`, so hop to the main thread before touching the UI, and keep it quick: it delays the conversion. If it throws, the conversion stops with that exception. `CancellationToken.cancel()` is safe from any thread. A token cancels once; make a new one for the next conversion.
 * **Cancelling.** The token is checked before every page and before every rule and the assembly, so a cancel takes effect within one page read (typically milliseconds). `convert` then throws `ConversionCancelledException` and returns nothing: there is no partial result. Nothing else is left behind, because `Converter` keeps no state. The `TextSource` stays open and is still the caller's to `close()`. Once the last report (`ANALYZING`, `done == total`) is sent, the result is already complete and a late `cancel()` has no effect.
+
+## Speaking a transcript
+
+Android's `TextToSpeech` refuses text longer than `getMaxSpeechInputLength()` (4000 characters). `SpeechChunker` splits a `Transcript` into `Utterance`s that are safe to speak, one `speak` call each. `Segment.text` is the text of one paragraph or heading (the tokens joined as in the first example above).
+
+```kotlin
+val utterances = SpeechChunker().chunk(result.transcript)   // maxChars = 3900 by default
+
+val u = utterances[i]
+tts.speak(u.text, TextToSpeech.QUEUE_FLUSH, null, "utterance-$i")
+// u.segmentIndex, u.kind, u.page: where it is in the book; u.words: its words, for highlighting
+
+// In UtteranceProgressListener.onRangeStart(utteranceId, start, end, frame), with u the utterance being spoken:
+val word = u.wordAt(start)                // SpokenWord: tokenIndex, page, range in the segment's text; null only if no words
+val inSegment = u.segmentRange(start, end) // TextRange in the segment's text (Segment.text)
+// highlight inSegment (or the token word.tokenIndex) in the paragraph shown for segment u.segmentIndex
+
+val seconds = u.estimatedSeconds()                          // 170 words per minute by default
+val total = result.transcript.estimatedSeconds(wordsPerMinute = 170)
+```
+
+* **One utterance per paragraph or heading**, unless the text is longer than `maxChars`. `Utterance.text` is exactly characters `[start, end)` of the segment's text, so an offset in the utterance is `start` plus the offset in the segment.
+* **Long paragraphs** are cut at sentence ends (`.`, `!`, `?`, an ellipsis, plus closing quotes and brackets), packing as many whole sentences as fit. A period does not end a sentence after a common abbreviation (Mr., Mrs., Dr., Prof., St., vs., etc., e.g., i.e., a.m., p.m., and a few more), after initials (J. R. R., U.S.), inside a number (3.14), or before a lowercase word; `!` and `?` always do. A sentence that is still too long is cut after its last comma or semicolon (followed by a space), then at its last space. Only a single word longer than `maxChars` is cut inside the word, and `SpokenWord.range` then covers just the part in that utterance. `maxChars` must be at least 8.
+* **Highlighting.** `wordAt` gives the word containing the offset TTS reports; an offset on a space gives the next word. Offsets are UTF-16 indexes, which is what Android reports. Word boxes on the page are not part of this; they arrive with Milestone Bravo.
+* **Duration.** The engine provides a simple estimate, `words * 60 / wordsPerMinute` (`SpeechChunker.estimatedSeconds`, `Utterance.estimatedSeconds`, `Transcript.estimatedSeconds`; default 170 words per minute). The real time depends on the voice and the speech rate the app sets, so the app should divide by its rate multiplier and may replace the estimate with measured time once utterances have been spoken.
+* `SpeechChunker` holds no state and is cheap: chunking a 180,000-word book is a single pass over the text.
 
 ## Implementing a `TextSource`
 

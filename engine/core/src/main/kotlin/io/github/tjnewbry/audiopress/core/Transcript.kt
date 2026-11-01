@@ -13,7 +13,17 @@ enum class SegmentKind { PARAGRAPH, HEADING }
 data class Segment(
     val kind: SegmentKind,
     val tokens: List<Token>,
-)
+) {
+    /** The text to speak: the tokens, with a space before each one that has [Token.spaceBefore]. */
+    val text: String
+        get() =
+            buildString {
+                for (token in tokens) {
+                    if (isNotEmpty() && token.spaceBefore) append(' ')
+                    append(token.text)
+                }
+            }
+}
 
 /**
  * One spoken word. [spans] are the places on the page it came from: usually one, two for a word
