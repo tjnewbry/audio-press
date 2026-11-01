@@ -4,6 +4,7 @@ import io.github.tjnewbry.audiopress.core.AudioPressException
 import io.github.tjnewbry.audiopress.core.CancellationToken
 import io.github.tjnewbry.audiopress.core.ConversionCancelledException
 import io.github.tjnewbry.audiopress.core.ConversionOptions
+import io.github.tjnewbry.audiopress.core.ConversionStage
 import io.github.tjnewbry.audiopress.core.Converter
 import io.github.tjnewbry.audiopress.core.CorruptPdfException
 import io.github.tjnewbry.audiopress.core.ExtractionNotPermittedException
@@ -27,9 +28,17 @@ class BookImporter(
         cancellation: CancellationToken? = null,
         onProgress: (fraction: Float) -> Unit = {},
     ): Book {
-        val transcript = Converter().convert(source, title, ConversionOptions(), cancellation) { onProgress(it.fraction) }.transcript
+        val pageCount = source.pageCount // read now: the source is closed before the conversion ends
+        // Keep only the transcript, so the layout of the whole book (in the result) can be freed at once.
+        val transcript =
+            Converter()
+                .convert(source, title, ConversionOptions(), cancellation) { progress ->
+                    // The engine does not touch the source once analysis starts, so give back the PDF's memory before the peak.
+                    if (progress.stage == ConversionStage.ANALYZING && progress.done == 0) source.close()
+                    onProgress(progress.fraction)
+                }.transcript
         if (transcript.wordCount == 0) throw EmptyBookException()
-        return store.save(title, source.pageCount, transcript.wordCount, transcript.toStoredParagraphs())
+        return store.save(title, pageCount, transcript.wordCount, transcript.toStoredParagraphs())
     }
 }
 

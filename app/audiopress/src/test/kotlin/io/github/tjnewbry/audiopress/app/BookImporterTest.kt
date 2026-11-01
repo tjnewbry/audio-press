@@ -35,6 +35,46 @@ class BookImporterTest {
         override fun close() = Unit
     }
 
+    /** Wraps a source and records when it is closed; a closed source refuses further reads, like a closed PDF. */
+    private class ClosingSource(
+        private val inner: TextSource,
+    ) : TextSource {
+        var closes = 0
+        var readAfterClose = false
+
+        override val pageCount get() = inner.pageCount
+
+        override fun readPage(pageIndex: Int): SourcePage {
+            if (closes > 0) readAfterClose = true
+            return inner.readPage(pageIndex)
+        }
+
+        override fun close() {
+            closes++
+        }
+    }
+
+    @Test
+    fun `the source is closed as soon as analysis starts, not read after that, and closing again is harmless`() {
+        val source = ClosingSource(SampleTextSource())
+        var closedBeforeLastProgress = false
+
+        val book =
+            BookImporter(store()).import(source, "Lighthouse") { fraction ->
+                if (fraction >=
+                    1f
+                ) {
+                    closedBeforeLastProgress = source.closes > 0
+                }
+            }
+        source.close() // the caller's use {} closes it again
+
+        assertEquals(2, source.closes)
+        assertTrue(closedBeforeLastProgress, "closed before the conversion finished")
+        assertEquals(false, source.readAfterClose)
+        assertEquals(2, book.pageCount) // the page count was taken before the source was closed
+    }
+
     @Test
     fun `importing the sample book stores its paragraphs with title, pages, and word count`() {
         val store = store()

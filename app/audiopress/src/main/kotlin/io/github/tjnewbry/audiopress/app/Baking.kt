@@ -153,7 +153,7 @@ class BookBakeController(
         }
     }
 
-    /** A rough size for the clips still to make: speech is about 5 MB a minute, and a minute is about 170 words. */
+    /** A rough size for the clips still to make: baked speech is about 2.9 MB a minute and a minute is about 170 words, so about 17 KB a word; this allows a little more. */
     private fun estimatedBytesNeeded(done: Int): Long {
         val remaining = utterances.drop(done).sumOf { it.words.size.toLong() }
         return remaining * BYTES_PER_WORD
@@ -205,7 +205,7 @@ fun usableSpaceOf(folder: File): Long {
     return existing?.usableSpace ?: 0L
 }
 
-private const val BYTES_PER_WORD = 31_000L
+private const val BYTES_PER_WORD = 18_000L
 private const val SPACE_MARGIN_BYTES = 50L * 1024 * 1024
 private const val LOW_SPACE_BYTES = 20L * 1024 * 1024
 
