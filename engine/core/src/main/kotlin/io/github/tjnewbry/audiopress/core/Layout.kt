@@ -96,9 +96,22 @@ object LineBuilder {
 
 /** Reads pages from a source and turns them into layout pages (pipeline stages 2 to 4). */
 object LayoutReader {
-    /** Reads [pages] (1-based page numbers) from [source], normalizes their text, and builds lines. */
+    /**
+     * Reads [pages] (1-based page numbers) from [source], normalizes their text, and builds lines. [cancellation]
+     * is checked before every page, and [onPageRead] is called with the number of pages read so far after each one.
+     */
     fun read(
         source: TextSource,
         pages: List<Int>,
-    ): List<LayoutPage> = pages.map { LineBuilder.build(TextNormalizer.normalize(source.readPage(it))) }
+        cancellation: CancellationToken? = null,
+        onPageRead: (Int) -> Unit = {},
+    ): List<LayoutPage> {
+        val layout = ArrayList<LayoutPage>(pages.size)
+        for ((i, page) in pages.withIndex()) {
+            cancellation?.throwIfCancelled()
+            layout += LineBuilder.build(TextNormalizer.normalize(source.readPage(page)))
+            onPageRead(i + 1)
+        }
+        return layout
+    }
 }

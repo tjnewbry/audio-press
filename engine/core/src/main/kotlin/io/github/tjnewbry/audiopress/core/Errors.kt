@@ -42,3 +42,6 @@ class NoTextLayerException(
 ) : AudioPressException(
         "$path: none of the selected pages contain text. This looks like a scanned PDF; reading scans (OCR) is planned for a later version.",
     )
+
+/** The caller cancelled the conversion with a [CancellationToken]. No result was produced. */
+class ConversionCancelledException : AudioPressException("The conversion was cancelled")

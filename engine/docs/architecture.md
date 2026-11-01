@@ -145,11 +145,11 @@ A 500-page book should convert in under 60 seconds; the sample books convert at 
 
 The app depends on the `core` module only, through the API in [api.md](api.md). What it needs to know:
 
-* **PDFBox does not run on Android**, so the app cannot use the `pdfbox` module. It must supply its own `TextSource` that reads PDFs on the phone, or send PDFs to a server that runs the engine. Which to do is an open decision, pending research.
+* **Apache PDFBox 3 does not run on Android**, so the app cannot use the `pdfbox` module. It supplies its own `TextSource`, `AndroidPdfTextSource` in `app/pdf-source`, which ports the same word logic to the community PDFBox 2.0 port (PdfBox-Android). On a 576-page book it produces byte-for-byte the same transcript as the desktop program.
 * **Memory.** The layout of every selected page is kept in memory, about 100 MB per 1,000 pages. That is comfortable on a desktop JVM and has not been measured on a phone. A sliding window of pages is possible if it matters.
 * **Word positions are approximate.** Each word's box is estimated from its font size (80% of it above the baseline, 20% below), not from the font's real metrics. That is fine for cleanup but not accurate enough to highlight words as they are read. Milestone Bravo needs exact boxes.
 * **Output limits.** Equations read poorly, and scanned books with an OCR text layer can contain OCR errors; see [Known limits](#known-limits-in-alpha).
-* **Untested on Android.** `core` is compiled to Java 17 bytecode and uses only the Kotlin and Java standard libraries, but it has not yet been built into an Android app, so details such as Java API availability are unverified.
+* **Android compatibility.** `core` was checked against Android API 33 and runs in the app on an emulator; the rules for keeping it that way are in [api.md](api.md#android-compatibility). Conversion takes a while on a phone, so `Converter.convert` reports progress and can be cancelled ([api.md](api.md#progress-and-cancellation)).
 
 ## Extension points for later milestones
 

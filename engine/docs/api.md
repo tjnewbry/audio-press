@@ -37,7 +37,8 @@ for (segment in result.transcript.segments) {
 
 | Type | What it is |
 |------|------------|
-| `Converter` | `convert(source, sourceName, options)` runs the whole pipeline and returns a `ConversionResult`. It holds no state. |
+| `Converter` | `convert(source, sourceName, options, cancellation = null, onProgress = {})` runs the whole pipeline and returns a `ConversionResult`. It holds no state. The last two parameters are optional; see [Progress and cancellation](#progress-and-cancellation). |
+| `ConversionProgress`, `ConversionStage`, `CancellationToken` | Progress reports and the cancel switch. |
 | `ConversionOptions` | `pages: PageSelection`, `pageMarkers: PageMarkers`, `urls: UrlMode`, `disabledRules: Set<RuleId>`. Everything has a default. |
 | `ConversionResult` | `transcript`, `removals` (everything removed, with the rule and reason), `warnings`, and `document` (the page layout). |
 | `Transcript` | `segments: List<Segment>` and `wordCount`. |
@@ -48,6 +49,27 @@ for (segment in result.transcript.segments) {
 | `LoTextWriter` | Writes a `Transcript` as the text-file format in [usage.md](usage.md#lo-format). |
 | `RuleId`, `PageSelection`, `PageMarkers`, `UrlMode` | Option values. |
 | `AudioPressException` | Sealed base class of expected failures; see [Errors](#errors). |
+
+## Progress and cancellation
+
+A conversion of a long book takes a while (about a minute for 600 pages on the emulator), almost all of it reading pages. `Converter.convert` takes two optional parameters, so existing calls are unchanged.
+
+```kotlin
+val token = CancellationToken()          // keep it; call token.cancel() from any thread, for example the Cancel button
+val result =
+    try {
+        Converter().convert(source, "book.pdf", options, token) { p ->
+            // p.stage is READING or ANALYZING; p.done of p.total steps; p.fraction is 0..1 for one progress bar
+            progressBar.value = p.fraction
+        }
+    } catch (e: ConversionCancelledException) {
+        null                              // the user cancelled: there is no result
+    }
+```
+
+* **Reports.** `READING` reports `done` of `total` pages (`total` is the number of *selected* pages), once at 0 and then after every page. `ANALYZING` then reports one step per enabled cleanup rule plus one for the paragraph assembly. Within a stage `done` only increases and the last report has `done == total`. `fraction` (0 to 1) gives reading 95 percent of the bar, because it is almost all the time.
+* **Threading.** `onProgress` runs on the thread that called `convert`, so hop to the main thread before touching the UI, and keep it quick: it delays the conversion. If it throws, the conversion stops with that exception. `CancellationToken.cancel()` is safe from any thread. A token cancels once; make a new one for the next conversion.
+* **Cancelling.** The token is checked before every page and before every rule and the assembly, so a cancel takes effect within one page read (typically milliseconds). `convert` then throws `ConversionCancelledException` and returns nothing: there is no partial result. Nothing else is left behind, because `Converter` keeps no state. The `TextSource` stays open and is still the caller's to `close()`. Once the last report (`ANALYZING`, `done == total`) is sent, the result is already complete and a late `cancel()` has no effect.
 
 ## Implementing a `TextSource`
 
@@ -74,7 +96,7 @@ A `SourcePage` has `index`, `width`, `height`, and `words`. A `SourceWord` has `
 
 ## Errors
 
-`Converter.convert` throws `NoPagesSelectedException` (the page selection matches no pages) or `NoTextLayerException` (no selected page has text). A `TextSource` throws the others when it opens a file. The PDFBox source throws `InputNotFoundException`, `InputUnreadableException`, `NotAPdfException`, `CorruptPdfException`, `PdfEncryptedException`, and `ExtractionNotPermittedException`. All have messages meant for the user.
+`Converter.convert` throws `NoPagesSelectedException` (the page selection matches no pages) or `NoTextLayerException` (no selected page has text). A `TextSource` throws the others when it opens a file. The PDFBox source throws `InputNotFoundException`, `InputUnreadableException`, `NotAPdfException`, `CorruptPdfException`, `PdfEncryptedException`, and `ExtractionNotPermittedException`. All have messages meant for the user. A cancelled conversion throws `ConversionCancelledException`, which is also an `AudioPressException`: catch it before the general case, and do not show it as an error.
 
 ## Android compatibility
 
