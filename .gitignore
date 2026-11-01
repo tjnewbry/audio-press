@@ -6,6 +6,8 @@
 local-docs/
 # Real PDFs for manual testing. Books may be copyrighted, so never commit them.
 local-samples/
+# A saved APK from each commit, for testing on a phone and choosing a rollback point.
+local-apks/
 
 ### Secrets / local environment ###
 .env
