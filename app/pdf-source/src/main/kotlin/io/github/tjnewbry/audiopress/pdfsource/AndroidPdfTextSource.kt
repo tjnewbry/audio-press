@@ -3,6 +3,7 @@ package io.github.tjnewbry.audiopress.pdfsource
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.io.MemoryUsageSetting
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -23,6 +24,7 @@ import io.github.tjnewbry.audiopress.core.TextSource
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 
 /**
@@ -63,9 +65,11 @@ class AndroidPdfTextSource private constructor(
                 words = collector.collect(document, pageIndex),
             )
         } catch (e: IOException) {
+            Log.w(TAG, "page $pageIndex of $name could not be read", e)
             throw CorruptPdfException(name, e)
         } catch (e: RuntimeException) {
             // PDFBox 2.0 throws unchecked exceptions (for example NullPointerException) from some damaged pages.
+            Log.w(TAG, "page $pageIndex of $name could not be read", e)
             throw CorruptPdfException(name, e)
         }
     }
@@ -88,6 +92,7 @@ class AndroidPdfTextSource private constructor(
     override fun close() {
         if (closed) return
         closed = true
+        openSources.decrementAndGet()
         try {
             document.close()
         } finally {
@@ -105,6 +110,20 @@ class AndroidPdfTextSource private constructor(
             context: Context,
             uri: Uri,
             displayName: String? = null,
+        ): AndroidPdfTextSource {
+            beginOpening()
+            try {
+                return openUri(context, uri, displayName)
+            } catch (e: Throwable) {
+                openSources.decrementAndGet()
+                throw e
+            }
+        }
+
+        private fun openUri(
+            context: Context,
+            uri: Uri,
+            displayName: String?,
         ): AndroidPdfTextSource {
             val app = context.applicationContext
             val name = displayName ?: queryDisplayName(app, uri) ?: uri.lastPathSegment ?: "document.pdf"
@@ -129,7 +148,15 @@ class AndroidPdfTextSource private constructor(
             context: Context,
             file: File,
             displayName: String = file.name,
-        ): AndroidPdfTextSource = openFile(context.applicationContext, file, displayName, deleteOnClose = false)
+        ): AndroidPdfTextSource {
+            beginOpening()
+            try {
+                return openFile(context.applicationContext, file, displayName, deleteOnClose = false)
+            } catch (e: Throwable) {
+                openSources.decrementAndGet()
+                throw e
+            }
+        }
 
         private fun openFile(
             app: Context,
@@ -143,17 +170,7 @@ class AndroidPdfTextSource private constructor(
 
             // PDFBox needs its bundled fonts and glyph lists from the app's assets. Calling this again is harmless.
             PDFBoxResourceLoader.init(app)
-            val memory = MemoryUsageSetting.setupTempFileOnly().setTempDir(workDirectory(app))
-            val document =
-                try {
-                    PDDocument.load(file, memory)
-                } catch (e: InvalidPasswordException) {
-                    throw PdfEncryptedException(name)
-                } catch (e: IOException) {
-                    throw CorruptPdfException(name, e)
-                } catch (e: RuntimeException) {
-                    throw CorruptPdfException(name, e)
-                }
+            val document = load(app, file, name)
             // Audio Press is an accessibility tool, so the PDF's "extract for accessibility" permission is enough.
             val permission = document.currentAccessPermission
             if (!permission.canExtractContent() && !permission.canExtractForAccessibility()) {
@@ -161,6 +178,36 @@ class AndroidPdfTextSource private constructor(
                 throw ExtractionNotPermittedException(name)
             }
             return AndroidPdfTextSource(document, name, if (deleteOnClose) listOf(file) else emptyList())
+        }
+
+        /**
+         * Loads [file] with PDFBox. If the work folder for PDFBox's scratch files vanished while it ran (the system
+         * cleared the cache, or something deleted it), that is not a damaged PDF: recreate it and try once more.
+         */
+        private fun load(
+            app: Context,
+            file: File,
+            name: String,
+        ): PDDocument {
+            var retried = false
+            while (true) {
+                try {
+                    return PDDocument.load(file, MemoryUsageSetting.setupTempFileOnly().setTempDir(workDirectory(app)))
+                } catch (e: InvalidPasswordException) {
+                    throw PdfEncryptedException(name)
+                } catch (e: IOException) {
+                    if (!retried && !File(app.cacheDir, WORK_DIRECTORY).isDirectory) {
+                        retried = true
+                        Log.w(TAG, "the work folder vanished while opening $name; trying once more", e)
+                        continue
+                    }
+                    Log.w(TAG, "$name (${file.length()} bytes) could not be loaded", e)
+                    throw CorruptPdfException(name, e)
+                } catch (e: RuntimeException) {
+                    Log.w(TAG, "$name (${file.length()} bytes) could not be loaded", e)
+                    throw CorruptPdfException(name, e)
+                }
+            }
         }
 
         /** Throws [NotAPdfException] unless "%PDF-" appears in the first 1 KB (readers accept junk before the header). */
@@ -218,10 +265,24 @@ class AndroidPdfTextSource private constructor(
          * Call it once at app start, before opening any PDF.
          */
         fun clearWorkFiles(context: Context) {
-            File(context.applicationContext.cacheDir, WORK_DIRECTORY).deleteRecursively()
+            synchronized(lock) {
+                if (openSources.get() > 0) return // a conversion is using them
+                File(context.applicationContext.cacheDir, WORK_DIRECTORY).deleteRecursively()
+            }
         }
 
         private const val WORK_DIRECTORY = "pdf-source"
+        private const val TAG = "AudioPressPdf"
+
+        private val lock = Any()
+
+        /** Counts a source as open from now, so [clearWorkFiles] cannot delete its files. */
+        private fun beginOpening() {
+            synchronized(lock) { openSources.incrementAndGet() }
+        }
+
+        /** How many sources are open or being opened in this process; [clearWorkFiles] waits for zero. */
+        private val openSources = AtomicInteger()
 
         /** PDF files may have a few bytes of junk before the header; readers accept it within the first 1 KB. */
         private const val HEADER_SEARCH_BYTES = 1024
