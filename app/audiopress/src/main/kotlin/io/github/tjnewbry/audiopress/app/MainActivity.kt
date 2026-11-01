@@ -1,6 +1,7 @@
 package io.github.tjnewbry.audiopress.app
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,8 +30,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -139,23 +150,65 @@ private fun ReaderScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Library") }
             Text(session.book.title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
         }
         SpeakButton(session)
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            itemsIndexed(session.paragraphs) { index, paragraph ->
-                val current = session.player.status != PlaybackStatus.STOPPED && session.player.index == index
-                val heading = paragraph.kind == SegmentKind.HEADING
-                Text(
-                    paragraph.text,
-                    style = if (heading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (heading) FontWeight.Bold else null,
-                    color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                )
+        Text(
+            "${formatDuration(session.elapsedSeconds())} / ${formatDuration(session.totalSeconds())} (estimated)",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Captions(session)
+    }
+}
+
+/** How long automatic scrolling waits after the user scrolls by hand. */
+private const val USER_SCROLL_PAUSE_MS = 4000L
+
+@Composable
+private fun Captions(session: ReaderSession) {
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = maxOf(0, session.currentParagraph - 1))
+    var lastUserScroll by remember { mutableLongStateOf(0L) }
+    var autoScrolling by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            if (scrolling && !autoScrolling) lastUserScroll = SystemClock.uptimeMillis()
+        }
+    }
+    val current = session.currentParagraph
+    LaunchedEffect(current, session.player.status) {
+        val idle = SystemClock.uptimeMillis() - lastUserScroll > USER_SCROLL_PAUSE_MS
+        if (session.player.status == PlaybackStatus.PLAYING && idle) {
+            autoScrolling = true
+            try {
+                listState.animateScrollToItem(maxOf(0, current - 1)) // the line before it stays in view for context
+            } finally {
+                autoScrolling = false
             }
+        }
+    }
+    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        itemsIndexed(session.paragraphs) { index, paragraph ->
+            val isCurrent = index == current && session.player.status != PlaybackStatus.STOPPED
+            val heading = paragraph.kind == SegmentKind.HEADING
+            val highlight = MaterialTheme.colorScheme.primaryContainer
+            val text =
+                buildAnnotatedString {
+                    append(paragraph.text)
+                    val word = session.currentWord
+                    if (isCurrent && word != null && word.last < paragraph.text.length) {
+                        addStyle(SpanStyle(background = highlight, fontWeight = FontWeight.Bold), word.first, word.last + 1)
+                    }
+                }
+            Text(
+                text,
+                style = if (heading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                fontWeight = if (heading) FontWeight.Bold else null,
+                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth().clickable { session.jumpTo(index) }.padding(vertical = 6.dp),
+            )
         }
     }
 }

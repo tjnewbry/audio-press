@@ -17,6 +17,8 @@ import java.util.Locale
  */
 class TtsSpeaker(
     context: Context,
+    private val onUtteranceStart: (String) -> Unit,
+    private val onRange: (id: String, start: Int, end: Int) -> Unit,
     private val onUtteranceDone: (String) -> Unit,
     private val onUtteranceError: (String) -> Unit,
     onReady: (problem: String?) -> Unit,
@@ -33,7 +35,18 @@ class TtsSpeaker(
             }
         tts.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String) = Unit
+                override fun onStart(utteranceId: String) {
+                    main.post { onUtteranceStart(utteranceId) }
+                }
+
+                override fun onRangeStart(
+                    utteranceId: String,
+                    start: Int,
+                    end: Int,
+                    frame: Int,
+                ) {
+                    main.post { onRange(utteranceId, start, end) }
+                }
 
                 override fun onDone(utteranceId: String) {
                     main.post { onUtteranceDone(utteranceId) }

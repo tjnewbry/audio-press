@@ -3,6 +3,8 @@ package io.github.tjnewbry.audiopress.app
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import java.io.File
 import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.Properties
 import java.util.UUID
 
@@ -25,10 +27,11 @@ data class StoredParagraph(
 /**
  * Keeps imported books in [root] (the app passes `filesDir/books`). Each book is a folder `<id>/` holding
  * `book.properties` (the metadata) and `transcript.txt` (one line per paragraph: `KIND<tab>PAGE<tab>text`,
- * with backslash, tab, and line breaks in the text escaped). The PDF itself is not kept.
+ * with backslash, tab, and line breaks in the text escaped), plus `progress.txt` (the reader's saved position,
+ * rewritten while the book is read). The PDF itself is not kept.
  *
  * A book is written to a `.tmp` folder and renamed, so a crash never leaves a half-written book in the
- * list. Call from one thread at a time.
+ * list. Calls that touch different books or files may come from different threads.
  */
 class BookStore(
     private val root: File,
@@ -67,9 +70,34 @@ class BookStore(
     }
 
     /** The paragraphs of book [id], in reading order. Throws [IOException] when the book is missing or unreadable. */
-    fun load(id: String): List<StoredParagraph> {
+    fun load(id: String): List<StoredParagraph> = readTranscript(File(bookFolder(id), TRANSCRIPT_FILE))
+
+    /** Remembers where the reader is in book [id]. Written to a temporary file and moved into place, so it is never half-written. */
+    fun saveProgress(
+        id: String,
+        position: Position,
+    ) {
+        val folder = bookFolder(id)
+        if (!folder.isDirectory) return // the book is gone; nothing to remember
+        val temporary = File(folder, "$PROGRESS_FILE.tmp")
+        temporary.writeText("${position.paragraph}\t${position.offset}\n", Charsets.UTF_8)
+        Files.move(temporary.toPath(), File(folder, PROGRESS_FILE).toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+
+    /** The saved position in book [id], or null when there is none or it cannot be read. */
+    fun loadProgress(id: String): Position? =
+        try {
+            val parts = File(bookFolder(id), PROGRESS_FILE).readText(Charsets.UTF_8).trim().split('\t')
+            if (parts.size == 2) Position(parts[0].toInt(), parts[1].toInt()) else null
+        } catch (e: IOException) {
+            null
+        } catch (e: NumberFormatException) {
+            null
+        }
+
+    private fun bookFolder(id: String): File {
         require(id.isNotEmpty() && '/' !in id && '\\' !in id && id != "." && id != "..") { "Bad book id" }
-        return readTranscript(File(File(root, id), TRANSCRIPT_FILE))
+        return File(root, id)
     }
 
     private fun writeMetadata(
@@ -135,6 +163,7 @@ class BookStore(
     private companion object {
         const val METADATA_FILE = "book.properties"
         const val TRANSCRIPT_FILE = "transcript.txt"
+        const val PROGRESS_FILE = "progress.txt"
         const val TEMP_SUFFIX = ".tmp"
 
         fun escape(text: String) =

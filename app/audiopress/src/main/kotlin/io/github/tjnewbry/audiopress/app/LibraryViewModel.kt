@@ -117,7 +117,12 @@ class LibraryViewModel(
         worker.execute {
             try {
                 val paragraphs = store.load(book.id)
-                main.post { if (reader == null) reader = ReaderSession(getApplication(), book, paragraphs) }
+                val position = store.loadProgress(book.id)
+                main.post {
+                    if (reader == null) {
+                        reader = ReaderSession(getApplication(), book, paragraphs, position) { store.saveProgress(book.id, it) }
+                    }
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "Cannot open ${book.title}", e)
                 openError = "\"${book.title}\" could not be opened. Import it again."

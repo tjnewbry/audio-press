@@ -88,4 +88,27 @@ class BookStoreTest {
 
         assertFailsWith<IOException> { store.load(book.id) }
     }
+
+    @Test
+    fun `saved progress is read back, and the latest save wins`() {
+        val book = store.save("book", 1, 1, paragraphs)
+        assertEquals(null, store.loadProgress(book.id))
+
+        store.saveProgress(book.id, Position(2, 17))
+        store.saveProgress(book.id, Position(3, 0))
+
+        assertEquals(Position(3, 0), store.loadProgress(book.id))
+        assertEquals(listOf(book), store.list()) // the progress file does not disturb the library
+    }
+
+    @Test
+    fun `unreadable progress is treated as none, and progress for a missing book is ignored`() {
+        val book = store.save("book", 1, 1, paragraphs)
+        File(root, "${book.id}/progress.txt").writeText("garbage")
+        assertEquals(null, store.loadProgress(book.id))
+
+        store.saveProgress("no-such-book", Position(1, 1))
+        assertEquals(null, store.loadProgress("no-such-book"))
+        assertFailsWith<IllegalArgumentException> { store.saveProgress("../x", Position(1, 1)) }
+    }
 }
