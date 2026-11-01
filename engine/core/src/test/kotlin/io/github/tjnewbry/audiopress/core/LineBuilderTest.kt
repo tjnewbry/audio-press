@@ -58,6 +58,20 @@ class LineBuilderTest {
         assertEquals(listOf(true, false), lines.map { it.horizontal })
     }
 
+    @Test
+    fun `a word that overlaps two lines joins the lower one, the last that matches`() {
+        val page =
+            page(
+                word("a", x = 72f, baseline = 100f),
+                word("b", x = 72f, baseline = 108f),
+                word("d", x = 110f, baseline = 112f, size = 30f),
+            )
+
+        val lines = LineBuilder.build(page).lines
+
+        assertEquals(listOf("a", "b d"), lines.map { it.text })
+    }
+
     private fun page(vararg words: SourceWord) = SourcePage(1, 432f, 648f, words.toList())
 
     private fun word(

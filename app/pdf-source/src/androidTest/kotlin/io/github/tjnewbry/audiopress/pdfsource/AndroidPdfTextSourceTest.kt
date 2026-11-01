@@ -13,6 +13,7 @@ import io.github.tjnewbry.audiopress.core.CorruptPdfException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
+import io.github.tjnewbry.audiopress.core.RuleId
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -209,6 +210,36 @@ class AndroidPdfTextSourceTest {
         assertFalse(spoken.contains("Test Book"), "the running header is removed")
         assertTrue(result.transcript.wordCount > 3 * 20 * 10)
         assertEquals(emptyList(), result.warnings)
+    }
+
+    @Test
+    fun convertsALargeGeneratedBookAndLogsTheTimings() {
+        val pages = 300
+        val file =
+            pdf("large.pdf") {
+                repeat(pages) { n ->
+                    page {
+                        text("The Large Book", x = 150f, y = 40f, size = 9f)
+                        text("${n + 1}", x = 210f, y = 610f, size = 9f)
+                        for (row in 0 until 38) {
+                            text(
+                                "Row $row of page ${n + 1} holds a plain sentence of ordinary body text.",
+                                x = 72f,
+                                y = 80f + row * 13.5f,
+                                size = 10f,
+                            )
+                        }
+                    }
+                }
+            }
+        val start = System.nanoTime()
+
+        val result = AndroidPdfTextSource.open(context, file).use { Converter().convert(it, "large.pdf", ConversionOptions()) }
+
+        val seconds = (System.nanoTime() - start) / 1e9
+        android.util.Log.i("AudioPressTiming", "converted $pages generated pages in %.1f s".format(seconds))
+        assertEquals(pages * 38 * 13, result.transcript.wordCount)
+        assertTrue(result.removals.any { it.rule == RuleId.RUNNING_HEADERS }, "the running header is removed")
     }
 
     private companion object {

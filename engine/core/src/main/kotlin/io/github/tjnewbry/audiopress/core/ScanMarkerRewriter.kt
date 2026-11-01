@@ -11,6 +11,7 @@ object ScanMarkerRewriter {
     private const val JUNK = """[*'\x{2019}"\x{201D}>?]*\x{00B0}+"""
 
     private val ATTACHED = Regex("""(.*$SENTENCE_END)$JUNK""")
+    private val DEGREE = Char(0x00B0)
     private val ALONE = Regex(JUNK)
     private val ENDS_SENTENCE = Regex(""".*$SENTENCE_END""")
 
@@ -19,6 +20,11 @@ object ScanMarkerRewriter {
             transcript.segments.map { segment ->
                 val tokens = mutableListOf<Token>()
                 for (token in segment.tokens) {
+                    // Every pattern below needs a degree sign, so almost every word can skip the regexes.
+                    if (DEGREE !in token.text) {
+                        tokens += token
+                        continue
+                    }
                     val previous = tokens.lastOrNull()
                     val alone = ALONE.matches(token.text) && previous != null && ENDS_SENTENCE.matches(previous.text)
                     if (!alone) tokens += ATTACHED.matchEntire(token.text)?.let { token.copy(text = it.groupValues[1]) } ?: token

@@ -23,6 +23,9 @@ object TextNormalizer {
 
     private val MULTIPLE_SPACES = Regex(" {2,}")
 
+    private const val FIRST_LIGATURE = 0xFB00
+    private const val LAST_LIGATURE = 0xFB06
+
     /**
      * Normalizes every word on [page], dropping words that end up empty. Superscript digits at the end of
      * a word (a footnote marker such as "summer." followed by a superscript 3) are split off into their own word that joins the
@@ -50,10 +53,16 @@ object TextNormalizer {
         )
     }
 
-    fun normalize(text: String): String =
+    fun normalize(text: String): String {
+        // Most words are plain printable ASCII (letters, digits, punctuation), which none of the steps below changes.
+        if (text.all { it.code in 0x21..0x7E }) return text
+        return normalizeSlowly(text)
+    }
+
+    private fun normalizeSlowly(text: String): String =
         buildString {
             text.forEachIndexed { i, c ->
-                val ligature = LIGATURES[c.code]
+                val ligature = if (c.code in FIRST_LIGATURE..LAST_LIGATURE) LIGATURES[c.code] else null
                 when {
                     ligature != null -> append(ligature)
                     c == SOFT_HYPHEN -> if (i == text.lastIndex) append(c)
@@ -62,7 +71,7 @@ object TextNormalizer {
                     else -> append(c)
                 }
             }
-        }.trim().replace(MULTIPLE_SPACES, " ")
+        }.trim().let { if (it.contains("  ")) it.replace(MULTIPLE_SPACES, " ") else it }
 
     /** Tab, no-break space, the typographic spaces, narrow no-break space, medium math space, ideographic space. */
     private fun isSpecialSpace(code: Int): Boolean =

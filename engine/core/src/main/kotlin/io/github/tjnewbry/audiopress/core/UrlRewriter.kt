@@ -29,7 +29,8 @@ object UrlRewriter {
     ): List<Token> {
         val result = mutableListOf<Token>()
         for (token in tokens) {
-            val match = URL.matchEntire(token.text)
+            // An address needs a dot (www.) or "://"; checking that first skips the regex for nearly every word.
+            val match = if (mayBeUrl(token.text)) URL.matchEntire(token.text) else null
             if (match == null) {
                 result += token
                 continue
@@ -55,6 +56,8 @@ object UrlRewriter {
         }
         return result
     }
+
+    private fun mayBeUrl(text: String): Boolean = text.contains('.') || text.contains("://")
 
     /** `https://www.example.com/a/b?c=1` becomes `example.com`. */
     fun domainOf(url: String): String {

@@ -78,8 +78,9 @@ object LineBuilder {
         val groups = mutableListOf<MutableList<SourceWord>>()
         val bounds = mutableListOf<Box>()
         for (word in words.sortedBy(order)) {
+            // The last matching group, found by searching backwards: words arrive in order, so it is usually the last one.
             val match =
-                bounds.indices.lastOrNull { i ->
+                bounds.indices.reversed().firstOrNull { i ->
                     overlap(bounds[i], word.box) >= MIN_OVERLAP * minOf(extent(bounds[i]), extent(word.box))
                 }
             if (match == null) {

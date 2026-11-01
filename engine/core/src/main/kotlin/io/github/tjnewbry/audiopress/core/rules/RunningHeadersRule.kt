@@ -44,8 +44,9 @@ object RunningHeadersRule : CleanupRule {
         return document.keptPages(removed).flatMap { page ->
             page.keptLines(removed).filter { it.horizontal }.mapNotNull { line ->
                 val zone = Zones.of(line, page)
+                if (zone == null) return@mapNotNull null
                 val signature = signature(line.text)
-                if (zone == null || signature.count { it.isLetter() } < MIN_LETTERS) return@mapNotNull null
+                if (signature.count { it.isLetter() } < MIN_LETTERS) return@mapNotNull null
                 val match =
                     (page.index - WINDOW..page.index + WINDOW).firstOrNull { other ->
                         other != page.index && signature in signatures[other to zone].orEmpty()
