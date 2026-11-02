@@ -193,13 +193,14 @@ class LibraryViewModel(
         }
     }
 
-    /**
-     * Export of a book's baked audio as one file. Not built yet: Eddie adds the merge of the baked clips later.
-     * TODO(Eddie): replace this with the real export (merge the baked clips of [book] into one audio file) and return null.
-     * Returns the message to show the user.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun exportBakedAudio(book: Book): String = "Export is coming soon."
+    /** Exports the baked audio of [book] as one .m4a file to the document [target] the user chose; see [ExportCenter]. */
+    fun exportBakedAudio(
+        book: Book,
+        target: Uri,
+    ) {
+        val exports = (getApplication<Application>() as AudioPressApp).exportCenter
+        exports.start(book, store.audioFolder(book.id), { store.footprintBytes(book.id) }, target)
+    }
 
     /** Pauses the open book, if any, so the position is saved. */
     fun pausePlayback() {

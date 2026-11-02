@@ -117,6 +117,9 @@ class BookStore(
         }
     }
 
+    /** Everything book [id] takes on the phone, in bytes: transcript, properties, progress, saved voice and baked clips. */
+    fun footprintBytes(id: String): Long = folderSize(bookFolder(id))
+
     /** The folder for book [id]'s baked audio. It may not exist yet. */
     fun audioFolder(id: String): File = File(bookFolder(id), "bake")
 

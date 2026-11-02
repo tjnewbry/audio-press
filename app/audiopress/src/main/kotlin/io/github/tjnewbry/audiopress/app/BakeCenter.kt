@@ -18,6 +18,7 @@ import java.util.concurrent.Executors
 /** The application class: it owns the [BakeCenter], so a bake outlives any screen. */
 class AudioPressApp : Application() {
     val bakeCenter: BakeCenter by lazy { BakeCenter(this) }
+    val exportCenter: ExportCenter by lazy { ExportCenter(this) }
 }
 
 /**
@@ -121,13 +122,16 @@ class BakeNotifier(
     }
 
     /** The ongoing notification for [notice]: silent, shown at once, and not swipeable, even while the app is open. */
-    fun progress(notice: BakeNotice): Notification {
+    fun progress(
+        notice: BakeNotice,
+        cancel: PendingIntent = cancelIntent(),
+    ): Notification {
         val builder =
             ongoing()
                 .setContentTitle(notice.title)
                 .setContentText(notice.text)
                 .setProgress(notice.total.coerceAtLeast(1), notice.done, notice.indeterminate)
-        if (!notice.cancelling) builder.addAction(0, "Cancel", cancelIntent())
+        if (!notice.cancelling) builder.addAction(0, "Cancel", cancel)
         return finish(builder)
     }
 
@@ -184,6 +188,15 @@ class BakeNotifier(
             context,
             0,
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+    /** The Cancel button of an export notification. */
+    fun exportCancelIntent(): PendingIntent =
+        PendingIntent.getService(
+            context,
+            2,
+            Intent(context, ExportForegroundService::class.java).setAction(ExportForegroundService.ACTION_CANCEL),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 

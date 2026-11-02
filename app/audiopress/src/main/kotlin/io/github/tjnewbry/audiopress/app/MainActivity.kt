@@ -64,6 +64,7 @@ import androidx.core.content.ContextCompat
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private val library: LibraryViewModel by viewModels()
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
                 BackHandler(enabled = reader == null && showLicences) { showLicences = false }
                 // Declared after the one above, so it wins: back leaves the voice or progress screen first.
                 BackHandler(enabled = reader != null && (reader.showVoices || reader.showProgress)) { reader?.back() }
+                ExportDialogs((application as AudioPressApp).exportCenter)
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val modifier = Modifier.padding(padding).padding(horizontal = 16.dp)
                     when {
@@ -145,6 +147,14 @@ private fun LibraryScreen(
             if (uri != null) library.importPdf(uri)
         }
     val importing = library.importState is ImportState.Working
+    // The book being exported while the save dialog is open (by id, so it survives a rotation).
+    var exportingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val savePicker =
+        rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("audio/mp4")) { uri ->
+            val book = library.books.firstOrNull { it.id == exportingId }
+            exportingId = null
+            if (uri != null && book != null) library.exportBakedAudio(book, uri)
+        }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Audio Press", style = MaterialTheme.typography.headlineMedium)
         Button(
@@ -198,7 +208,10 @@ private fun LibraryScreen(
                                 baked = book.id in library.bakedBooks,
                                 onDelete = { everything -> library.delete(book, everything) },
                                 onRename = { title -> library.rename(book, title) },
-                                onExport = { library.exportBakedAudio(book) },
+                                onExport = {
+                                    exportingId = book.id
+                                    savePicker.launch(suggestedExportName(book.title))
+                                },
                                 onClick = { library.open(book) },
                             )
                         }
@@ -216,7 +229,7 @@ private fun BookRow(
     baked: Boolean,
     onDelete: (everything: Boolean) -> Unit,
     onRename: (String) -> Unit,
-    onExport: () -> String,
+    onExport: () -> Unit,
     onClick: () -> Unit,
 ) {
     var asking by rememberSaveable { mutableStateOf(false) }
@@ -244,7 +257,7 @@ private fun BookRow(
                         },
                         onClick = {
                             menuOpen = false
-                            notice = if (baked) onExport() else "Must bake audio first."
+                            if (baked) onExport() else notice = "Must bake audio first."
                         },
                     )
                     DropdownMenuItem(text = { Text("Rename") }, onClick = {
@@ -490,3 +503,50 @@ private fun BakeSection(session: ReaderSession) {
         }
     }
 }
+
+/** The name the save dialog suggests: the book's title with `.m4a`, without characters files cannot have. */
+fun suggestedExportName(title: String): String = title.replace(Regex("[\\/:*?\"<>|]"), "_").trim().ifEmpty { "audiobook" } + ".m4a"
+
+/** The progress, failure and success dialogs of an export; shown over whatever screen is open. */
+@Composable
+private fun ExportDialogs(center: ExportCenter) {
+    when (val state = center.state) {
+        ExportState.Idle -> {
+            // No export to show.
+        }
+
+        is ExportState.Working -> {
+            AlertDialog(
+                onDismissRequest = {},
+                title = { Text("Exporting \"${state.title}\"") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (state.cancelling) "Cancelling..." else "${(state.fraction * PERCENT).roundToInt()}%")
+                        LinearProgressIndicator(progress = { state.fraction }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
+                    }
+                },
+                confirmButton = { TextButton(onClick = center::cancel, enabled = !state.cancelling) { Text("Cancel") } },
+            )
+        }
+
+        is ExportState.Failed -> {
+            AlertDialog(
+                onDismissRequest = center::acknowledge,
+                title = { Text("Export failed") },
+                text = { Text(state.message) },
+                confirmButton = { TextButton(onClick = center::acknowledge) { Text("OK") } },
+            )
+        }
+
+        is ExportState.Done -> {
+            // The one button must be used; tapping outside does not close it.
+            AlertDialog(
+                onDismissRequest = {},
+                text = { Text(exportSuccessText(state.exportBytes, state.footprintBytes)) },
+                confirmButton = { TextButton(onClick = center::acknowledge) { Text("Acknowledge") } },
+            )
+        }
+    }
+}
+
+private const val PERCENT = 100
