@@ -117,6 +117,28 @@ class BookStore(
         }
     }
 
+    /** The reading speed saved for book [id] (0.5 to 2, in steps of 0.05), or 1 when none is saved or it cannot be read. */
+    fun loadSpeed(id: String): Float =
+        try {
+            PlaybackSpeed.snap(File(bookFolder(id), SPEED_FILE).readText(Charsets.UTF_8).trim().toFloat())
+        } catch (e: IOException) {
+            PlaybackSpeed.DEFAULT
+        } catch (e: NumberFormatException) {
+            PlaybackSpeed.DEFAULT
+        }
+
+    /** Remembers the reading speed of book [id] in its folder, so deleting the book removes it and deleting only the bake keeps it. */
+    fun saveSpeed(
+        id: String,
+        speed: Float,
+    ) {
+        val folder = bookFolder(id)
+        if (!folder.isDirectory) return // the book is gone
+        val temporary = File(folder, "$SPEED_FILE.tmp")
+        temporary.writeText("${PlaybackSpeed.snap(speed)}\n", Charsets.UTF_8)
+        Files.move(temporary.toPath(), File(folder, SPEED_FILE).toPath(), StandardCopyOption.REPLACE_EXISTING)
+    }
+
     /** Everything book [id] takes on the phone, in bytes: transcript, properties, progress, saved voice and baked clips. */
     fun footprintBytes(id: String): Long = folderSize(bookFolder(id))
 
@@ -215,6 +237,7 @@ class BookStore(
         const val METADATA_FILE = "book.properties"
         const val TRANSCRIPT_FILE = "transcript.txt"
         const val PROGRESS_FILE = "progress.txt"
+        const val SPEED_FILE = "speed.txt"
         const val TEMP_SUFFIX = ".tmp"
 
         fun escape(text: String) =

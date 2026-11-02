@@ -25,11 +25,13 @@ class TtsSpeaker(
 ) : SpeechOutput {
     private val main = Handler(Looper.getMainLooper())
     private val tts: TextToSpeech
+    private var rate = 1f
 
     init {
         tts =
             TextToSpeech(context.applicationContext) { status ->
                 val problem = describeInit(status)
+                tts.setSpeechRate(rate)
                 Log.i(TAG, "TextToSpeech init status=$status problem=$problem")
                 main.post { onReady(problem) }
             }
@@ -77,6 +79,11 @@ class TtsSpeaker(
 
     override fun stop() {
         tts.stop()
+    }
+
+    override fun setRate(rate: Float) {
+        this.rate = rate
+        tts.setSpeechRate(rate)
     }
 
     fun shutdown() {

@@ -19,6 +19,9 @@ interface Playback {
     /** Stops if playing, and sets the place where [play] will continue, without starting. */
     fun moveTo(position: Position)
 
+    /** Reads at [speed] times the normal speed (1 is normal). Takes effect at once, also while playing. */
+    fun setSpeed(speed: Float) {}
+
     /**
      * Goes to the utterance that holds [position], [offsetMs] milliseconds into its audio where the player can do that,
      * and plays from there if [play], else waits there paused. Live speech always starts at the utterance.

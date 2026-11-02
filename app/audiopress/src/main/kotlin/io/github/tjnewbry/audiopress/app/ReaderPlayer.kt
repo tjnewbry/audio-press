@@ -8,6 +8,9 @@ interface SpeechOutput {
     )
 
     fun stop()
+
+    /** Speaks at [rate] times the normal rate (1 is normal), for what is spoken from now on. */
+    fun setRate(rate: Float) {}
 }
 
 enum class PlaybackStatus { STOPPED, PLAYING, PAUSED }
@@ -49,6 +52,7 @@ class ReaderPlayer(
         }
 
     private var sequence = 0
+    private var speed = 1f
     private var spokenFrom = 0
     private var startedAt: Long? = null
     private var lastSavedAt = Long.MIN_VALUE
@@ -78,6 +82,14 @@ class ReaderPlayer(
 
     override fun jumpTo(position: Position) {
         utteranceIndexAt(utterances, position)?.let { speakFrom(it, 0) }
+    }
+
+    override fun setSpeed(speed: Float) {
+        if (speed == this.speed) return
+        this.speed = speed
+        output.setRate(speed)
+        // The engine cannot change the rate of what it is saying, so carry on from the current word at the new rate.
+        if (state.status == PlaybackStatus.PLAYING) speakFrom(state.utterance, state.wordStart)
     }
 
     override fun moveTo(position: Position) {
@@ -111,7 +123,8 @@ class ReaderPlayer(
         if (!isCurrent(utteranceId)) return
         val began = startedAt
         if (spokenFrom == 0 && began != null) {
-            onMeasured(utterances[state.utterance].words.size, (clock() - began) / MS_PER_SECOND)
+            // Measured at the speed it was spoken at; the estimate is for normal speed, so it is scaled back.
+            onMeasured(utterances[state.utterance].words.size, (clock() - began) / MS_PER_SECOND * speed)
         }
         val next = state.utterance + 1
         if (next < utterances.size) {

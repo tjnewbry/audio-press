@@ -99,4 +99,15 @@ class VoicePickerTest {
             }
         }
     }
+
+    @Test
+    fun `the voice screen opens on Medium, else Lite, else Heavy, else Medium`() {
+        fun pick(vararg downloaded: VoiceQuality) = defaultQuality { it in downloaded }
+
+        assertEquals(VoiceQuality.MEDIUM, pick(VoiceQuality.MEDIUM, VoiceQuality.LITE, VoiceQuality.HEAVY))
+        assertEquals(VoiceQuality.MEDIUM, pick(VoiceQuality.MEDIUM))
+        assertEquals(VoiceQuality.LITE, pick(VoiceQuality.LITE, VoiceQuality.HEAVY))
+        assertEquals(VoiceQuality.HEAVY, pick(VoiceQuality.HEAVY))
+        assertEquals(VoiceQuality.MEDIUM, pick())
+    }
 }

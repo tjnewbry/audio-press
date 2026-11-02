@@ -124,7 +124,8 @@ fun PlayerBar(
     }
     val frame = tick // read here, so every tick redraws the bar
     val timeline = session.timeline()
-    val elapsed = session.elapsedMs()
+    var dragShare by remember { mutableStateOf<Float?>(null) } // where the finger is while the bar is being dragged
+    val elapsed = dragShare?.let { (it * timeline.totalMs).toLong() } ?: session.elapsedMs() // the text follows the finger
     val indicator = if (follow.showArrow) scrollIndicator(listState, session, timeline) else null
     val enabled = session.speech == SpeechState.Ready || session.bakeState is BakeState.Baked
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -134,6 +135,9 @@ fun PlayerBar(
                 played = timeline.fraction(elapsed),
                 buffer = timeline.bufferFraction,
                 boundaries = timeline.boundaryShares,
+                dotsAboveBuffer = session.mode == PlaybackMode.LIVE,
+                dragShare = dragShare,
+                onDragShare = { dragShare = it },
                 indicator = indicator,
                 description = "${formatDuration(elapsed / MS_PER_SECOND)} of ${formatDuration(timeline.totalMs / MS_PER_SECOND)}",
                 onSeek = onSeek,
@@ -216,13 +220,17 @@ fun SeekBar(
     played: Float,
     buffer: Float,
     boundaries: List<Float>,
+    dotsAboveBuffer: Boolean,
+    dragShare: Float?,
+    onDragShare: (Float?) -> Unit,
     indicator: Float?,
     description: String,
     onSeek: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var width by remember { mutableIntStateOf(1) }
-    var dragging by remember { mutableStateOf<Float?>(null) }
+    val dragging by rememberUpdatedState(dragShare)
+    val drag by rememberUpdatedState(onDragShare)
     val seek by rememberUpdatedState(onSeek)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val fill = MaterialTheme.colorScheme.primary
@@ -237,13 +245,13 @@ fun SeekBar(
                 detectTapGestures { seek(barScale(width, INSET.toPx(), THICKNESS.toPx()).share(it.x).toDouble()) }
             }.pointerInput(Unit) {
                 detectHorizontalDragGestures(
-                    onDragStart = { dragging = barScale(width, INSET.toPx(), THICKNESS.toPx()).share(it.x) },
+                    onDragStart = { drag(barScale(width, INSET.toPx(), THICKNESS.toPx()).share(it.x)) },
                     onDragEnd = {
                         dragging?.let { share -> seek(share.toDouble()) }
-                        dragging = null
+                        drag(null)
                     },
-                    onDragCancel = { dragging = null },
-                    onHorizontalDrag = { change, _ -> dragging = barScale(width, INSET.toPx(), THICKNESS.toPx()).share(change.position.x) },
+                    onDragCancel = { drag(null) },
+                    onHorizontalDrag = { change, _ -> drag(barScale(width, INSET.toPx(), THICKNESS.toPx()).share(change.position.x)) },
                 )
             }.semantics {
                 contentDescription = "Seek bar"
@@ -260,13 +268,26 @@ fun SeekBar(
         val corner = CornerRadius(thickness / 2)
         val scale = barScale(size.width.toInt(), INSET.toPx(), thickness)
         drawRoundRect(track, Offset(scale.left, top), Size(scale.right - scale.left, thickness), corner)
-        // The block boundaries are punched-out dots: over the track, under the buffer and the played fill.
-        val dot = thickness * DOT_SHARE
-        for (x in dotPositions(boundaries, scale, minGap = 4 * dot)) drawCircle(notch, dot, Offset(x, top + thickness / 2))
 
         // A full fill goes to the end of the track; otherwise the fills end where the same scale puts their share.
         fun fillTo(share: Float) = if (share >= 1f) scale.right else scale.x(share)
+        val dot = thickness * DOT_SHARE
+
+        fun drawDots() =
+            dotPositions(boundaries, scale, minGap = 4 * dot).forEach { x ->
+                drawCircle(
+                    notch,
+                    dot,
+                    Offset(
+                        x,
+                        top + thickness / 2,
+                    ),
+                )
+            }
+        // The block boundaries are punched-out dots. Under the buffer when baked audio is in use, over it when live speech is.
+        if (!dotsAboveBuffer) drawDots()
         if (buffer > 0f) drawRoundRect(BufferGrey, Offset(scale.left, top), Size(fillTo(buffer) - scale.left, thickness), corner)
+        if (dotsAboveBuffer) drawDots()
         if (shown > 0f) drawRoundRect(fill, Offset(scale.left, top), Size(fillTo(shown) - scale.left, thickness), corner)
         drawCircle(fill, 8.dp.toPx(), Offset(scale.x(shown), top + thickness / 2))
         if (indicator != null) {

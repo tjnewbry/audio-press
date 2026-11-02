@@ -2,6 +2,7 @@ package io.github.tjnewbry.audiopress.app
 
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.util.Log
 import java.io.File
 import java.io.IOException
@@ -13,6 +14,7 @@ class MediaClipPlayer : ClipPlayer {
 
     private var player: MediaPlayer? = null
     private var startedFromMs = 0
+    private var speed = 1f
 
     // False from start() until the player is playing from the place asked for. Until then the position is that place, not the
     // player's own (which is still 0 or the old place while it prepares and seeks), so a seek never shows a jump back.
@@ -53,12 +55,14 @@ class MediaClipPlayer : ClipPlayer {
                         if (player === done) {
                             settled = true
                             done.start()
+                            if (speed != 1f) applySpeed(done)
                         }
                     }
                     it.seekTo(fromMs.toLong(), MediaPlayer.SEEK_CLOSEST)
                 } else {
                     settled = true
                     it.start()
+                    if (speed != 1f) applySpeed(it)
                 }
             }
             next.setOnCompletionListener { if (player === it) onCompleted?.invoke(id) }
@@ -74,6 +78,22 @@ class MediaClipPlayer : ClipPlayer {
         } catch (e: IllegalStateException) {
             Log.w(TAG, "Cannot play ${file.name}", e)
             onError?.invoke(id)
+        }
+    }
+
+    override fun setSpeed(speed: Float) {
+        this.speed = speed
+        player?.takeIf { settled }?.let { applySpeed(it) }
+    }
+
+    // Set after the player is playing: on some versions setting it on a stopped player would start it.
+    private fun applySpeed(player: MediaPlayer) {
+        try {
+            player.playbackParams = PlaybackParams().setSpeed(speed).setPitch(1f)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Cannot set the playback speed", e)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Cannot set the playback speed", e)
         }
     }
 

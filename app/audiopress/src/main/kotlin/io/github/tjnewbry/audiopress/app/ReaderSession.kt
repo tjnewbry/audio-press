@@ -6,6 +6,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import java.util.concurrent.Executors
@@ -39,6 +40,8 @@ class ReaderSession(
     initialPosition: Position?,
     private val saveProgress: (Position) -> Unit,
     val bake: BookBakeController,
+    initialSpeed: Float = PlaybackSpeed.DEFAULT,
+    private val saveSpeed: (Float) -> Unit = {},
 ) {
     private val estimator = TimeEstimator(utterances.map { it.words.size })
     private val saver = Executors.newSingleThreadExecutor { Thread(it, "save-progress") }
@@ -52,6 +55,10 @@ class ReaderSession(
     var mode: PlaybackMode by mutableStateOf(PlaybackMode.LIVE)
         private set
     var bakeState: BakeState by mutableStateOf(bake.state)
+        private set
+
+    /** The reading speed (1 is normal), saved per book. It never changes the book's timeline: the bar and the time stay at 1x. */
+    var speed: Float by mutableFloatStateOf(PlaybackSpeed.snap(initialSpeed))
         private set
 
     private var livePlayer: ReaderPlayer? = null
@@ -81,6 +88,8 @@ class ReaderSession(
                 },
             )
         livePlayer = live
+        live.setSpeed(initialSpeed)
+        clipPlayer.setSpeed(initialSpeed)
         bakedPlayer = if (bake.clips != null) createBakedPlayer(initialPosition) else null
         // Baked audio can be played once the book is baked, or while it is being baked (the clips made so far).
         val switching =
@@ -145,7 +154,7 @@ class ReaderSession(
         val utterance = utterances.getOrNull(player.utterance) ?: return 0L
         val wordsBefore = utterance.words.count { it.first < player.wordStart }
         // The speech engine reports each word as it starts, so between reports the position advances at the estimated speed.
-        val since = if (player.status == PlaybackStatus.PLAYING) SystemClock.uptimeMillis() - wordChangedAt else 0L
+        val since = if (player.status == PlaybackStatus.PLAYING) ((SystemClock.uptimeMillis() - wordChangedAt) * speed).toLong() else 0L
         return timeline.elapsedMs(player.utterance, wordsBefore, since, rangesReported)
     }
 
@@ -164,6 +173,16 @@ class ReaderSession(
     }
 
     fun totalMs(): Long = timeline().totalMs
+
+    /** Sets the reading speed, at once (also while playing), for live speech and baked audio, and remembers it for this book. */
+    fun changeSpeed(next: Float) {
+        val snapped = PlaybackSpeed.snap(next)
+        if (snapped == speed) return
+        speed = snapped
+        livePlayer?.setSpeed(snapped)
+        clipPlayer.setSpeed(snapped)
+        if (!saver.isShutdown) saver.execute { runCatching { saveSpeed(snapped) } }
+    }
 
     /** Moves playback to [share] (0 to 1) of the book's time; keeps playing if it was playing, else waits there. */
     fun seekTo(share: Double) {

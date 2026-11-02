@@ -139,7 +139,7 @@ fun VoiceScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var picker by rememberSaveable(stateSaver = pickerSaver) { mutableStateOf(VoicePicker(VoiceQuality.MEDIUM)) }
+    var picker by rememberSaveable(stateSaver = pickerSaver) { mutableStateOf(VoicePicker(defaultQuality(session::isModelDownloaded))) }
     var playing: String? by remember { mutableStateOf(null) }
     val samples = remember { SamplePlayer(context) { playing = it } }
     DisposableEffect(Unit) { onDispose { samples.stop() } }

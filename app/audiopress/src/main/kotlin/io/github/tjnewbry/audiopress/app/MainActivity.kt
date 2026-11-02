@@ -64,6 +64,7 @@ import androidx.core.content.ContextCompat
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
@@ -348,8 +349,14 @@ private fun ReaderScreen(
                 modifier = Modifier.weight(1f),
             )
         }
-        SpeechStatus(session) // the bake and speech messages are at the top, the player controls at the bottom
-        BakeSection(session)
+        // The bake and speech messages, and the speed, are at the top; the player controls are at the bottom.
+        Row(verticalAlignment = Alignment.Top) {
+            Column(Modifier.weight(1f)) {
+                SpeechStatus(session)
+                BakeSection(session)
+            }
+            SpeedControl(session.speed, session::changeSpeed)
+        }
         Captions(
             session,
             listState,
@@ -364,6 +371,9 @@ private fun ReaderScreen(
         })
     }
 }
+
+/** A step of this many lines or fewer to the playing line is animated; a longer way is a jump. */
+private const val NEAR_LINES = 2
 
 private val followSaver = Saver<ScrollFollow, Boolean>(save = { it.locked }, restore = { ScrollFollow(it) })
 
@@ -382,9 +392,19 @@ private fun Captions(
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) userScrolled() }
     }
     val current = session.currentLine
+    val wasLocked = remember { mutableStateOf(true) }
     LaunchedEffect(current, follow.autoScrolls) {
-        // The line before the current one stays in view for context.
-        if (follow.autoScrolls) listState.animateScrollToItem((current - 1).coerceAtLeast(0))
+        val lockedBefore = wasLocked.value
+        wasLocked.value = follow.autoScrolls
+        if (!follow.autoScrolls) return@LaunchedEffect
+        val target = (current - 1).coerceAtLeast(0) // the line before the current one stays in view for context
+        // Only a step to the next line is animated. Returning to the player, or any far jump, is instant: animating across a
+        // very long text would lag.
+        if (lockedBefore && abs(listState.firstVisibleItemIndex - target) <= NEAR_LINES) {
+            listState.animateScrollToItem(target)
+        } else {
+            listState.scrollToItem(target)
+        }
     }
     Box(modifier.outline(dotted = false).padding(6.dp)) {
         LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {

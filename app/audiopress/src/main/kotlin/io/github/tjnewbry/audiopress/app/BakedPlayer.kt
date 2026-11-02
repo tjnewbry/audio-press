@@ -10,6 +10,9 @@ interface ClipPlayer {
     /** Called when the clip started with [start] could not be played. */
     var onError: ((id: Int) -> Unit)?
 
+    /** Plays at [speed] times the normal speed (pitch kept), also the clip that is playing. */
+    fun setSpeed(speed: Float) {}
+
     /** The position in the current clip, in milliseconds. */
     val positionMs: Int
 
@@ -144,6 +147,8 @@ class BakedPlayer(
         state = PlayerState(PlaybackStatus.PAUSED, index)
         onSave(this.position)
     }
+
+    override fun setSpeed(speed: Float) = clipPlayer.setSpeed(speed)
 
     override fun moveTo(position: Position) {
         if (state.status == PlaybackStatus.PLAYING) {

@@ -126,6 +126,7 @@ class LibraryViewModel(
             try {
                 val paragraphs = store.load(book.id)
                 val position = store.loadProgress(book.id)
+                val speed = store.loadSpeed(book.id)
                 // Split the book and find its words here, off the main thread, so opening a huge book does not freeze the screen.
                 val utterances = speechUtterances(paragraphs).onEach { it.words }
                 val bake = bakeFor(book, utterances)
@@ -140,6 +141,8 @@ class LibraryViewModel(
                                 position,
                                 { store.saveProgress(book.id, it) },
                                 bake,
+                                speed,
+                                { store.saveSpeed(book.id, it) },
                             )
                     }
                 }

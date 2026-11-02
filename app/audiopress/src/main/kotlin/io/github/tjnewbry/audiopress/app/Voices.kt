@@ -77,3 +77,10 @@ data class VoicePicker(
     /** The choice to bake with, or null while no voice is selected. */
     val choice: VoiceChoice? get() = voice?.let { VoiceChoice(it.id, quality) }
 }
+
+/**
+ * The quality tab the voice screen opens on: Medium when it is downloaded, else Lite, else Heavy, else Medium (nothing is
+ * downloaded, so Medium is the one to offer).
+ */
+fun defaultQuality(isDownloaded: (VoiceQuality) -> Boolean): VoiceQuality =
+    listOf(VoiceQuality.MEDIUM, VoiceQuality.LITE, VoiceQuality.HEAVY).firstOrNull(isDownloaded) ?: VoiceQuality.MEDIUM
