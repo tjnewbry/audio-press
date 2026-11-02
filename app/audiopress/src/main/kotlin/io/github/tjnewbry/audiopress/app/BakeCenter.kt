@@ -10,6 +10,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import io.github.tjnewbry.audiopress.bake.kokoro.kokoroService
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -27,7 +28,7 @@ class AudioPressApp : Application() {
  */
 class BakeCenter(
     private val app: Application,
-    val baker: BakeService = KokoroBakeService(),
+    val baker: BakeService = KokoroBakeService(kokoroService(File(app.noBackupFilesDir, "kokoro"))),
 ) {
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "bake") }
     private val controllers = ConcurrentHashMap<String, BookBakeController>()

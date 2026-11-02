@@ -67,3 +67,64 @@ dependencies {
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.junit)
 }
+
+// The licences screen shows one text file, put together at build time from the app's own notices and the notices and
+// licence texts kept in the bake module, so the screen cannot fall behind them.
+abstract class GenerateNotices : DefaultTask() {
+    @get:InputFile
+    abstract val appNotices: RegularFileProperty
+
+    @get:InputFile
+    abstract val bakeNotices: RegularFileProperty
+
+    @get:InputDirectory
+    abstract val licenseTexts: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val text =
+            buildString {
+                append(
+                    appNotices
+                        .get()
+                        .asFile
+                        .readText()
+                        .trim(),
+                ).append("\n\n")
+                append(
+                    bakeNotices
+                        .get()
+                        .asFile
+                        .readText()
+                        .trim(),
+                ).append("\n\n")
+                licenseTexts.get().asFile.listFiles { f -> f.extension == "txt" }.orEmpty().sortedBy { it.name }.forEach {
+                    append("----\n\n")
+                        .append(it.name.removeSuffix(".txt"))
+                        .append("\n\n")
+                        .append(it.readText().trim())
+                        .append("\n\n")
+                }
+            }
+        val target = outputDir.get().asFile
+        target.mkdirs()
+        target.resolve("licences.txt").writeText(text)
+    }
+}
+
+val generateNotices =
+    tasks.register<GenerateNotices>("generateNotices") {
+        appNotices.set(layout.projectDirectory.file("NOTICES.md"))
+        bakeNotices.set(layout.projectDirectory.file("../bake/THIRD-PARTY-NOTICES.md"))
+        licenseTexts.set(layout.projectDirectory.dir("../bake/licenses"))
+        outputDir.set(layout.buildDirectory.dir("generated/notices"))
+    }
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(generateNotices, GenerateNotices::outputDir)
+    }
+}

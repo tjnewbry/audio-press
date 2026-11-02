@@ -15,6 +15,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -85,14 +87,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 val reader = library.reader
+                var showLicences by rememberSaveable { mutableStateOf(false) }
                 LaunchedEffect(reader?.showVoices) { if (reader?.showVoices == true) askForNotifications() }
                 BackHandler(enabled = reader != null) { library.closeReader() }
+                BackHandler(enabled = reader == null && showLicences) { showLicences = false }
                 // Declared after the one above, so it wins: back leaves the voice or progress screen first.
                 BackHandler(enabled = reader != null && (reader.showVoices || reader.showProgress)) { reader?.back() }
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val modifier = Modifier.padding(padding).padding(horizontal = 16.dp)
                     when {
-                        reader == null -> LibraryScreen(library, modifier)
+                        reader == null && showLicences -> LicencesScreen({ showLicences = false }, modifier)
+                        reader == null -> LibraryScreen(library, { showLicences = true }, modifier)
                         reader.showProgress -> BakeProgressScreen(reader.bakeState, reader::cancelBake, modifier)
                         reader.showVoices -> VoiceScreen(reader, modifier)
                         else -> ReaderScreen(reader, library::closeReader, modifier)
@@ -106,6 +111,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LibraryScreen(
     library: LibraryViewModel,
+    onAbout: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val picker =
@@ -142,27 +148,30 @@ private fun LibraryScreen(
             }
         }
         library.openError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        when {
-            !library.loaded -> {
-                // The list is still being read.
-            }
+        Box(Modifier.weight(1f)) {
+            when {
+                !library.loaded -> {
+                    // The list is still being read.
+                }
 
-            library.books.isEmpty() -> {
-                Text(
-                    "No books yet. Tap Import PDF and choose a PDF with real text on its pages (not a scan or a photo) " +
-                        "from your phone. Audio Press cleans it up and adds it here, ready to read aloud.",
-                )
-            }
+                library.books.isEmpty() -> {
+                    Text(
+                        "No books yet. Tap Import PDF and choose a PDF with real text on its pages (not a scan or a photo) " +
+                            "from your phone. Audio Press cleans it up and adds it here, ready to read aloud.",
+                    )
+                }
 
-            else -> {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(
-                        library.books,
-                        key = { it.id },
-                    ) { book -> BookRow(book, baked = book.id in library.bakedBooks) { library.open(book) } }
+                else -> {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(
+                            library.books,
+                            key = { it.id },
+                        ) { book -> BookRow(book, baked = book.id in library.bakedBooks) { library.open(book) } }
+                    }
                 }
             }
         }
+        TextButton(onClick = onAbout) { Text("About / Licences") }
     }
 }
 

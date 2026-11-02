@@ -4,7 +4,6 @@ import io.github.tjnewbry.audiopress.bake.BakeFailedException
 import io.github.tjnewbry.audiopress.bake.BakeItem
 import io.github.tjnewbry.audiopress.bake.BakeOutOfMemoryException
 import io.github.tjnewbry.audiopress.bake.BakedBook
-import io.github.tjnewbry.audiopress.bake.kokoro.FakeKokoroService
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroDownloadException
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroService
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroUnavailableException
@@ -18,12 +17,9 @@ import io.github.tjnewbry.audiopress.bake.BookBaker as ModuleBookBaker
  * [BakeService] on top of the `bake` module's [KokoroService]: model downloads, and baking with a Kokoro voice. The
  * module is the only place that knows how the files and manifest are laid out; this only translates its types and
  * failures into the app's.
- *
- * The default [service] is [FakeKokoroService] (a quick simulated download, then silent clips of about the right length)
- * until the Kokoro runtime lands in the module; then pass the real one.
  */
 class KokoroBakeService(
-    private val service: KokoroService = FakeKokoroService(),
+    private val service: KokoroService,
 ) : BakeService {
     override val available: Boolean get() = service.runtimeAvailable
 
