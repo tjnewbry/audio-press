@@ -8,6 +8,7 @@ import io.github.tjnewbry.audiopress.bake.kokoro.FakeKokoroService
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroDownloadException
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroService
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroUnavailableException
+import io.github.tjnewbry.audiopress.bake.kokoro.downloadSizeMegabytes
 import io.github.tjnewbry.audiopress.core.CancellationToken
 import java.io.File
 import io.github.tjnewbry.audiopress.bake.BakeCancelledException as ModuleCancelledException
@@ -29,6 +30,8 @@ class KokoroBakeService(
     override fun isModelDownloaded(quality: VoiceQuality) = service.isDownloaded(quality)
 
     override fun downloadSizeBytes(quality: VoiceQuality) = service.downloadSizeBytes(quality)
+
+    override fun downloadSizeMegabytes(quality: VoiceQuality) = service.downloadSizeMegabytes(quality)
 
     override fun downloadModel(
         quality: VoiceQuality,

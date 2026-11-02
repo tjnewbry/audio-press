@@ -36,6 +36,8 @@ class BookBakeControllerTest {
 
         override fun downloadSizeBytes(quality: VoiceQuality) = if (quality in downloaded) 0L else size
 
+        override fun downloadSizeMegabytes(quality: VoiceQuality) = (downloadSizeBytes(quality) / 1_000_000L).toInt()
+
         override fun downloadModel(
             quality: VoiceQuality,
             cancellation: CancellationToken,

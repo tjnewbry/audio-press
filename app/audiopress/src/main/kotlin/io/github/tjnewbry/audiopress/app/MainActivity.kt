@@ -1,5 +1,8 @@
 package io.github.tjnewbry.audiopress.app
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
@@ -48,6 +51,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import kotlinx.coroutines.delay
 import java.text.DateFormat
@@ -55,6 +59,18 @@ import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private val library: LibraryViewModel by viewModels()
+
+    // A bake keeps running in the background with a notification; Android 13 and newer ask before showing one.
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
+    private fun askForNotifications() {
+        val needed = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+        if (needed &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     override fun onStop() {
         // Leaving the app or turning the screen off pauses playback and saves the position. A rotation also stops the
@@ -69,6 +85,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 val reader = library.reader
+                LaunchedEffect(reader?.showVoices) { if (reader?.showVoices == true) askForNotifications() }
                 BackHandler(enabled = reader != null) { library.closeReader() }
                 // Declared after the one above, so it wins: back leaves the voice or progress screen first.
                 BackHandler(enabled = reader != null && (reader.showVoices || reader.showProgress)) { reader?.back() }

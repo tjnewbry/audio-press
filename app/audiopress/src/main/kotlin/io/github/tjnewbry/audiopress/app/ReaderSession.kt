@@ -178,7 +178,7 @@ class ReaderSession(
 
     fun isModelDownloaded(quality: VoiceQuality): Boolean = bake.isModelDownloaded(quality)
 
-    fun downloadSizeBytes(quality: VoiceQuality): Long = bake.downloadSizeBytes(quality)
+    fun downloadSizeMegabytes(quality: VoiceQuality): Int = bake.downloadSizeMegabytes(quality)
 
     fun cancelBake() = bake.cancel()
 

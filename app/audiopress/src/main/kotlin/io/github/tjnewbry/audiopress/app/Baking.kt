@@ -40,6 +40,9 @@ interface BakeService {
     /** How many bytes are still to download for [quality]: the whole model when none of it is here, 0 when it is ready. */
     fun downloadSizeBytes(quality: VoiceQuality): Long
 
+    /** The same, in the whole decimal megabytes the voice screen shows (Lite 121, Medium 206, Heavy 354). 0 once downloaded. */
+    fun downloadSizeMegabytes(quality: VoiceQuality): Int
+
     /**
      * Downloads the model of [quality] (and the shared voices file, once), resuming a partial download. Blocks.
      * Reports the share done, 0 to 1. Throws [BakeCancelledException] if [cancellation] is cancelled (partial files
@@ -76,6 +79,8 @@ object UnavailableBaker : BakeService {
     override fun isModelDownloaded(quality: VoiceQuality) = false
 
     override fun downloadSizeBytes(quality: VoiceQuality) = 0L
+
+    override fun downloadSizeMegabytes(quality: VoiceQuality) = 0
 
     override fun downloadModel(
         quality: VoiceQuality,
@@ -152,6 +157,10 @@ class BookBakeController(
     @Volatile
     var listener: ((BakeState) -> Unit)? = null
 
+    /** Told of every state change, for the notification of a bake that runs in the background (set by the [BakeCenter]). */
+    @Volatile
+    var observer: ((BakeState) -> Unit)? = null
+
     @Volatile
     var state: BakeState = BakeState.Unavailable
         private set
@@ -176,6 +185,8 @@ class BookBakeController(
     fun isModelDownloaded(quality: VoiceQuality): Boolean = baker.isModelDownloaded(quality)
 
     fun downloadSizeBytes(quality: VoiceQuality): Long = baker.downloadSizeBytes(quality)
+
+    fun downloadSizeMegabytes(quality: VoiceQuality): Int = baker.downloadSizeMegabytes(quality)
 
     /** Starts baking with [choice], or with the voice of the earlier bake when none is given. Does nothing without a voice. */
     fun start(choice: VoiceChoice? = null) {
@@ -297,6 +308,7 @@ class BookBakeController(
 
     private fun publish(next: BakeState) {
         state = next
+        observer?.invoke(next)
         listener?.invoke(next)
     }
 }

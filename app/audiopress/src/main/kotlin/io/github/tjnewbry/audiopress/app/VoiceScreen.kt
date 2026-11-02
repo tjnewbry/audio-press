@@ -190,8 +190,7 @@ fun VoiceScreen(
             }
         }
         val downloaded = session.isModelDownloaded(picker.quality)
-        val megabytes = (session.downloadSizeBytes(picker.quality) / BYTES_PER_MB).toInt().takeIf { it > 0 } ?: picker.quality.fallbackMb
-        val action = picker.action(downloaded, megabytes)
+        val action = picker.action(downloaded, session.downloadSizeMegabytes(picker.quality))
         Button(
             onClick = {
                 samples.stop()
@@ -202,17 +201,6 @@ fun VoiceScreen(
         ) { Text(action.text, textAlign = TextAlign.Center) }
     }
 }
-
-private const val BYTES_PER_MB = 1_000_000L
-
-/** The size to show if the service has no number (it reports none for a model that is already here). */
-private val VoiceQuality.fallbackMb: Int
-    get() =
-        when (this) {
-            VoiceQuality.LITE -> 120
-            VoiceQuality.MEDIUM -> 205
-            VoiceQuality.HEAVY -> 355
-        }
 
 /** A small speaker with sound waves, drawn so no icon library is needed. */
 @Composable

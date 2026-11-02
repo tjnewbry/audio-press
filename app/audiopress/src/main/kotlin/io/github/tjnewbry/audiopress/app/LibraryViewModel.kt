@@ -69,10 +69,9 @@ class LibraryViewModel(
     private val store = BookStore(File(application.filesDir, "books"))
     private val opener = PdfOpener { uri, name -> AndroidPdfTextSource.open(application, uri, name) }
 
-    // Baking has its own thread (it is long), and its controllers outlive the reader screen so a bake carries on.
-    private val bakeWorker = Executors.newSingleThreadExecutor { Thread(it, "bake") }
-    private val baker: BakeService = KokoroBakeService() // simulated voices until the Kokoro runtime lands in :bake
-    private val bakes = mutableMapOf<String, BookBakeController>()
+    // Baking lives in the application, not here, so a bake carries on when this screen goes away (see [BakeCenter]).
+    private val center = (application as AudioPressApp).bakeCenter
+    private val baker: BakeService get() = center.baker
 
     init {
         worker.execute {
@@ -165,18 +164,13 @@ class LibraryViewModel(
     override fun onCleared() {
         reader?.close()
         worker.shutdown()
-        bakes.values.forEach { it.cancel() }
-        bakeWorker.shutdown()
     }
 
     /** The bake controller for [book], made once and kept while the app runs. Call on the worker thread. */
     private fun bakeFor(
         book: Book,
         utterances: List<Utterance>,
-    ): BookBakeController =
-        bakes.getOrPut(book.id) {
-            BookBakeController(utterances, store.audioFolder(book.id), baker, bakeWorker, choiceFile = store.voiceFile(book.id))
-        }
+    ): BookBakeController = center.controllerFor(book, utterances, store.audioFolder(book.id), store.voiceFile(book.id))
 
     private fun refresh() {
         val list = store.list()
