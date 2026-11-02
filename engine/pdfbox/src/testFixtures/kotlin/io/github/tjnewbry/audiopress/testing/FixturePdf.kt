@@ -66,6 +66,30 @@ class FixturePage(
     }
 
     /**
+     * Draws [text] the way Chrome and Skia print-to-PDF do: the font size is set large (`Tf` [declaredSize]) and the page's
+     * coordinate system is scaled down with `cm`, so the text shows at [size] points. Position is as for [text].
+     */
+    fun scaledText(
+        text: String,
+        x: Float,
+        y: Float,
+        size: Float = 11f,
+        declaredSize: Float = 300f,
+    ) {
+        val scale = size / declaredSize
+        operations += { stream ->
+            stream.saveGraphicsState()
+            stream.transform(Matrix.getScaleInstance(scale, scale))
+            stream.beginText()
+            stream.setFont(FONT, declaredSize)
+            stream.newLineAtOffset(x / scale, (height - y) / scale)
+            stream.showText(text)
+            stream.endText()
+            stream.restoreGraphicsState()
+        }
+    }
+
+    /**
      * Draws a line word by word, like typeset text. With [right], the words are spread out so the line ends
      * exactly there (justified). A word written as `word^1` gets a raised, smaller `1` right after it.
      */

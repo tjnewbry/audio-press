@@ -1,5 +1,7 @@
 package io.github.tjnewbry.audiopress.pdfbox
 
+import io.github.tjnewbry.audiopress.core.ConversionOptions
+import io.github.tjnewbry.audiopress.core.Converter
 import io.github.tjnewbry.audiopress.core.CorruptPdfException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
@@ -162,6 +164,50 @@ class PdfBoxTextSourceTest {
             }
 
         assertEquals("From The XMP", PdfBoxTextSource.open(pdf).use { it.title })
+    }
+
+    @Test
+    fun `reads the displayed font size when the page scales its coordinates`() {
+        val pdf = fixturePdf(dir.resolve("scaled.pdf")) { page { scaledText("Hello world", x = 72f, y = 100f, size = 12f) } }
+
+        val page = PdfBoxTextSource.open(pdf).use { it.readPage(1) }
+
+        assertEquals(listOf("Hello", "world"), page.words.map { it.text })
+        assertEquals(12f, page.words.first().fontSize, TOLERANCE)
+        assertEquals(100f, page.words.first().baseline, TOLERANCE)
+        assertEquals(
+            72f,
+            page.words
+                .first()
+                .box.left,
+            TOLERANCE,
+        )
+    }
+
+    @Test
+    fun `lines of text drawn through a scaled coordinate system stay separate lines in reading order`() {
+        val pdf =
+            fixturePdf(dir.resolve("scaled-lines.pdf")) {
+                page {
+                    scaledText("The first line is here.", x = 72f, y = 100f, size = 12f)
+                    scaledText("Then comes the second.", x = 72f, y = 114f, size = 12f)
+                    scaledText("And the third at last.", x = 72f, y = 128f, size = 12f)
+                }
+            }
+
+        val result = PdfBoxTextSource.open(pdf).use { Converter().convert(it, "scaled-lines.pdf", ConversionOptions()) }
+
+        val spoken = result.transcript.segments.joinToString(" ") { s -> s.tokens.joinToString(" ") { it.text } }
+        assertEquals("The first line is here. Then comes the second. And the third at last.", spoken)
+    }
+
+    @Test
+    fun `a size set by the text matrix is still read as before`() {
+        val pdf = fixturePdf(dir.resolve("plain.pdf")) { page { text("Plain text", x = 72f, y = 100f, size = 10.5f) } }
+
+        val page = PdfBoxTextSource.open(pdf).use { it.readPage(1) }
+
+        assertEquals(10f, page.words.first().fontSize, 0.01f, "PDFBox reports whole points, and that is kept")
     }
 
     private companion object {
