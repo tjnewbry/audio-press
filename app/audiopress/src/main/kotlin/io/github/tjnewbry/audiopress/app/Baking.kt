@@ -260,7 +260,7 @@ class BookBakeController(
                     baker.downloadSizeBytes(use.quality),
                 )
             } else {
-                BakeState.Baking(done, utterances.size, voice = use)
+                BakeState.Baking(done, utterances.size, voice = use, etaMs = initialEtaMs(done, use.quality))
             },
         )
         val finished = CountDownLatch(1)
@@ -309,7 +309,7 @@ class BookBakeController(
                 baker.downloadModel(use.quality, cancellation) { done, total ->
                     publish(BakeState.Downloading(use.quality, done, total, cancellation.isCancelled))
                 }
-                publish(BakeState.Baking(done, utterances.size, voice = use))
+                publish(BakeState.Baking(done, utterances.size, voice = use, etaMs = initialEtaMs(done, use.quality)))
             }
             val startedAt = now()
             baker.bake(utterances, folder, use, cancellation) { n, total ->
@@ -321,7 +321,7 @@ class BookBakeController(
                         wordsBefore[n.coerceAtMost(utterances.size)],
                         wordsBefore.last(),
                     )
-                publish(BakeState.Baking(n, total, cancellation.isCancelled, use, remaining))
+                publish(BakeState.Baking(n, total, cancellation.isCancelled, use, remaining ?: initialEtaMs(n, use.quality)))
             }
             refresh()
         } catch (e: BakeCancelledException) {
@@ -337,6 +337,12 @@ class BookBakeController(
             publish(BakeState.Failed(message, doneOnDisk(), utterances.size))
         }
     }
+
+    /** The time left before any speed has been measured: the words still to bake, at the speed known for [quality]. */
+    private fun initialEtaMs(
+        done: Int,
+        quality: VoiceQuality,
+    ): Long = initialEstimateMs(wordsBefore.last() - wordsBefore[done.coerceAtMost(utterances.size)], quality)
 
     /** A rough size for the clips still to make: baked speech is about 2.9 MB a minute and 170 words a minute, so about 17 KB a word. */
     private fun estimatedBytesNeeded(done: Int): Long {
@@ -446,6 +452,29 @@ fun estimateRemainingMs(
     if (doneSince <= 0 || elapsed <= 0) return null
     return ((wordsTotal - wordsDone).coerceAtLeast(0) * elapsed.toDouble() / doneSince).toLong()
 }
+
+private const val WORDS_PER_MINUTE = 170.0
+private const val MS_PER_MINUTE_OF_SPEECH = 60_000.0
+
+/**
+ * Seconds of work per second of speech on a mid-range phone, from the speed test on the owner's Moto G Stylus 5G (Lite 1.22,
+ * Medium 0.97, Heavy 1.19 with two threads), rounded up a little for loading the model.
+ */
+private fun workPerSecondOfSpeech(quality: VoiceQuality): Double =
+    when (quality) {
+        VoiceQuality.LITE -> 1.25
+        VoiceQuality.MEDIUM -> 1.0
+        VoiceQuality.HEAVY -> 1.2
+    }
+
+/**
+ * About how many milliseconds baking [words] words takes, before any speed has been measured: speech at 170 words a minute,
+ * at the speed known for [quality]. It shows at once, and the measured speed replaces it once clips are made.
+ */
+fun initialEstimateMs(
+    words: Long,
+    quality: VoiceQuality,
+): Long = (words.coerceAtLeast(0) / WORDS_PER_MINUTE * MS_PER_MINUTE_OF_SPEECH * workPerSecondOfSpeech(quality)).toLong()
 
 /** The clips of a book as its [controller] has them right now, for playing while the bake is still going on. */
 class BakeClipSource(

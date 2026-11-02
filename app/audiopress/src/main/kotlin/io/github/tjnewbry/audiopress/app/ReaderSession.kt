@@ -283,6 +283,11 @@ class ReaderSession(
         }
     }
 
+    /** The progress in the player was tapped: open the full-screen progress of the download or bake that is running. */
+    fun openProgress() {
+        if (bakeState.isRunning) showProgress = true
+    }
+
     /** A voice was chosen on the voice screen: show the progress and start. */
     fun chooseVoice(choice: VoiceChoice) {
         showVoices = false

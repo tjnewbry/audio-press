@@ -1,5 +1,7 @@
 package io.github.tjnewbry.audiopress.app.ui.player
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
@@ -44,24 +46,29 @@ fun BakeSection(session: ReaderSession) {
         }
 
         is BakeState.Downloading -> {
-            CancellableProgress(
-                message = "Downloading ${state.quality.label}...",
-                fraction = state.fraction,
-                cancelling = state.cancelling,
-                onCancel = session::cancelBake,
-                spacing = Spacing.ExtraSmall,
-            )
+            // Tapping the progress opens the full-screen page; the Cancel button inside still cancels.
+            Box(Modifier.clickable(onClickLabel = "Show the full progress", onClick = session::openProgress)) {
+                CancellableProgress(
+                    message = "Downloading ${state.quality.label}...",
+                    fraction = state.fraction,
+                    cancelling = state.cancelling,
+                    onCancel = session::cancelBake,
+                    spacing = Spacing.ExtraSmall,
+                )
+            }
         }
 
         is BakeState.Baking -> {
-            CancellableProgress(
-                message = bakingLine(state),
-                fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f,
-                cancelling = state.cancelling,
-                onCancel = session::cancelBake,
-                cancelLabel = "Cancel baking",
-                spacing = Spacing.ExtraSmall,
-            )
+            Box(Modifier.clickable(onClickLabel = "Show the full progress", onClick = session::openProgress)) {
+                CancellableProgress(
+                    message = bakingLine(state),
+                    fraction = if (state.total > 0) state.done.toFloat() / state.total else 0f,
+                    cancelling = state.cancelling,
+                    onCancel = session::cancelBake,
+                    cancelLabel = "Cancel baking",
+                    spacing = Spacing.ExtraSmall,
+                )
+            }
         }
 
         is BakeState.Failed -> {

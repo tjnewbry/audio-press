@@ -385,8 +385,10 @@ class BookBakeControllerTest {
 
         controller.start(choice)
 
-        // The first Baking state, before any clip is done, has no estimate. After that, four equal clips at 10 s each:
-        // 30 s left after the first, 20 s after the second, 10 s after the third, none after the last.
-        assertEquals(listOf(null, 30_000L, 20_000L, 10_000L, 0L), etas)
+        // The first Baking state, before any clip is done, already has an estimate from the known speed of the quality, so
+        // there is never a wait for one. After that, four equal clips at 10 s each: 30 s left after the first, 20 s after the
+        // second, 10 s after the third, none after the last.
+        assertTrue(assertNotNull(etas.first()) > 0)
+        assertEquals(listOf(30_000L, 20_000L, 10_000L, 0L), etas.drop(1))
     }
 }
