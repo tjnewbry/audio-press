@@ -120,6 +120,30 @@ class AndroidPdfTextSourceTest {
     }
 
     @Test
+    fun readsTheDisplayedFontSizeWhenThePageScalesItsCoordinates() {
+        val file =
+            pdf("scaled.pdf") {
+                page {
+                    scaledText("The first line is here.", x = 72f, y = 100f, size = 12f)
+                    scaledText("Then comes the second.", x = 72f, y = 114f, size = 12f)
+                    scaledText("And the third at last.", x = 72f, y = 128f, size = 12f)
+                }
+            }
+
+        AndroidPdfTextSource.open(context, file).use { source ->
+            val words = source.readPage(1).words
+            assertEquals(12f, words.first().fontSize, TOLERANCE)
+            assertEquals(100f, words.first().baseline, TOLERANCE)
+            val spoken =
+                Converter()
+                    .convert(source, "scaled.pdf", ConversionOptions())
+                    .transcript.segments
+                    .joinToString(" ") { s -> s.tokens.joinToString(" ") { it.text } }
+            assertEquals("The first line is here. Then comes the second. And the third at last.", spoken)
+        }
+    }
+
+    @Test
     fun aPageWithoutTextHasNoWords() {
         val file = pdf("blank.pdf") { page() }
 

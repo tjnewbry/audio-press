@@ -376,8 +376,22 @@ private class WordCollector : PDFTextStripper() {
         words += SourceWord(text, box, baseline, fontSize, horizontal, joinsPrevious)
     }
 
-    /** The glyph's font size in points, falling back to its height for fonts that report no size. */
-    private fun size(position: TextPosition): Float = position.fontSizeInPt.takeIf { it > 0f } ?: position.heightDir
+    /**
+     * The glyph's font size in points. PDFBox's `fontSizeInPt` leaves out the page's coordinate scaling (the `cm`
+     * operator), so a PDF written as "Tf 327 under cm 0.099" (Chrome and Skia print-to-PDF do this) reports 327 for text
+     * drawn at 24 points, and every word's box then overlaps every other line. The displayed size, `yScale`, includes the
+     * scaling. It is used when the two differ by more than a quarter; otherwise PDFBox's own value is kept, so ordinary
+     * PDFs read exactly as before. Falls back to the glyph height for fonts that report no size.
+     */
+    private fun size(position: TextPosition): Float {
+        val declared = position.fontSizeInPt
+        val displayed = abs(position.yScale)
+        return when {
+            declared > 0f && displayed > 0f && (declared < 0.8f * displayed || declared > 1.25f * displayed) -> displayed.toInt().toFloat()
+            declared > 0f -> declared
+            else -> position.heightDir
+        }
+    }
 
     private companion object {
         /** A baseline shift larger than this share of the font size starts a new word (a superscript or subscript). */

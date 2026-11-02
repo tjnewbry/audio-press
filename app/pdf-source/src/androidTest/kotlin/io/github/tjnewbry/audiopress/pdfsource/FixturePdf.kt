@@ -62,6 +62,30 @@ class FixturePage(
         return x + FONT.getStringWidth(text) / 1000f * size
     }
 
+    /**
+     * Draws [text] the way Chrome and Skia print-to-PDF do: a large font size (`Tf` [declaredSize]) under a `cm` that scales
+     * the page down, so the text shows at [size] points.
+     */
+    fun scaledText(
+        text: String,
+        x: Float,
+        y: Float,
+        size: Float = 11f,
+        declaredSize: Float = 300f,
+    ) {
+        val scale = size / declaredSize
+        operations += { stream ->
+            stream.saveGraphicsState()
+            stream.transform(Matrix(scale, 0f, 0f, scale, 0f, 0f))
+            stream.beginText()
+            stream.setFont(FONT, declaredSize)
+            stream.newLineAtOffset(x / scale, (height - y) / scale)
+            stream.showText(text)
+            stream.endText()
+            stream.restoreGraphicsState()
+        }
+    }
+
     /** Draws [text] turned 90 degrees, reading upward from ([x], [y]). */
     fun rotatedText(
         text: String,
