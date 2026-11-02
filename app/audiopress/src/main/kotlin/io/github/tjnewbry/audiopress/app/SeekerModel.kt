@@ -89,6 +89,11 @@ class BookTimeline(
         return base + sinceMs.coerceIn(0L, room.coerceAtLeast(0L))
     }
 
+    /** The share of the book (0 to 1) at each boundary between two lines, in order: baked lines at their real lengths, the rest estimated. */
+    val boundaryShares: List<Float> by lazy {
+        (1 until wordCounts.size).map { fraction(starts[it]) }.filter { it > 0f && it < 1f } // none at the very start or end
+    }
+
     /** [ms] as a share of the book, 0 to 1. */
     fun fraction(ms: Long): Float = if (totalMs <= 0) 0f else (ms.toDouble() / totalMs).toFloat().coerceIn(0f, 1f)
 

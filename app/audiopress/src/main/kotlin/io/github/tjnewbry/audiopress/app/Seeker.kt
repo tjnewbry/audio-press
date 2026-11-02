@@ -54,6 +54,9 @@ private val INSET = 8.dp
 /** How thick the track is; its end caps are half of that in radius. */
 private val THICKNESS = 8.dp
 
+/** The radius of a block dot as a share of the track thickness; two dot-widths (4 radii) is the least gap between dots. */
+private const val DOT_SHARE = 0.25f
+
 /**
  * Maps shares of the book (0 to 1) to places on the bar and back, for one scale shared by the played fill, the thumb, the
  * buffer, the scroll arrow and touches. The track runs from [left] to [right]; the start of the book is one end-cap radius
@@ -70,6 +73,23 @@ internal class BarScale(
     fun x(share: Float): Float = start + length * share.coerceIn(0f, 1f)
 
     fun share(x: Float): Float = ((x - start) / length).coerceIn(0f, 1f)
+}
+
+/**
+ * Where to draw the block dots: the places of the [shares] on [scale], leaving out any that is closer than [minGap] pixels to
+ * the one drawn before it, so a book with hundreds of blocks shows only as many dots as fit.
+ */
+internal fun dotPositions(
+    shares: List<Float>,
+    scale: BarScale,
+    minGap: Float,
+): List<Float> {
+    val xs = ArrayList<Float>()
+    for (share in shares) {
+        val x = scale.x(share)
+        if (xs.isEmpty() || x - xs.last() >= minGap) xs += x
+    }
+    return xs
 }
 
 /** The scale of a bar [width] pixels wide with [inset] pixels free at each end and a track [thickness] pixels thick. */
@@ -113,6 +133,7 @@ fun PlayerBar(
             SeekBar(
                 played = timeline.fraction(elapsed),
                 buffer = timeline.bufferFraction,
+                boundaries = timeline.boundaryShares,
                 indicator = indicator,
                 description = "${formatDuration(elapsed / MS_PER_SECOND)} of ${formatDuration(timeline.totalMs / MS_PER_SECOND)}",
                 onSeek = onSeek,
@@ -201,6 +222,7 @@ fun PlayPauseButton(
 fun SeekBar(
     played: Float,
     buffer: Float,
+    boundaries: List<Float>,
     indicator: Float?,
     description: String,
     onSeek: (Double) -> Unit,
@@ -211,6 +233,7 @@ fun SeekBar(
     val seek by rememberUpdatedState(onSeek)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val fill = MaterialTheme.colorScheme.primary
+    val notch = MaterialTheme.colorScheme.background
     val shown = dragging ?: played
     Canvas(
         modifier
@@ -248,6 +271,9 @@ fun SeekBar(
         // A full fill goes to the end of the track; otherwise the fills end where the same scale puts their share.
         fun fillTo(share: Float) = if (share >= 1f) scale.right else scale.x(share)
         if (buffer > 0f) drawRoundRect(BufferGrey, Offset(scale.left, top), Size(fillTo(buffer) - scale.left, thickness), corner)
+        // The block boundaries are punched-out dots: over the track and the buffer, under the played fill.
+        val dot = thickness * DOT_SHARE
+        for (x in dotPositions(boundaries, scale, minGap = 4 * dot)) drawCircle(notch, dot, Offset(x, top + thickness / 2))
         if (shown > 0f) drawRoundRect(fill, Offset(scale.left, top), Size(fillTo(shown) - scale.left, thickness), corner)
         drawCircle(fill, 8.dp.toPx(), Offset(scale.x(shown), top + thickness / 2))
         if (indicator != null) {

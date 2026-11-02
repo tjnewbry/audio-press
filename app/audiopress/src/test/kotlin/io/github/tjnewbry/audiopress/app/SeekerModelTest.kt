@@ -150,6 +150,34 @@ class SeekerModelTest {
     }
 
     @Test
+    fun `block boundaries are at the starts of lines after the first, baked ones at their real lengths`() {
+        val timeline = BookTimeline(words, listOf(6_000L, 14_000L), slow) // 6 + 14 baked, then 10 + 10 estimated: 40 s
+
+        assertEquals(listOf(0.15f, 0.5f, 0.75f), timeline.boundaryShares)
+    }
+
+    @Test
+    fun `a book of one line has no boundary dots`() {
+        assertEquals(emptyList(), BookTimeline(listOf(10), emptyList(), slow).boundaryShares)
+    }
+
+    @Test
+    fun `dots too close to the one before are left out, and none sit on the end caps`() {
+        val scale = barScale(width = 1000, inset = 20f, thickness = 8f) // from 24 to 976
+        val many = timelineShares(500)
+
+        val xs = dotPositions(many, scale, minGap = 8f)
+
+        assertTrue(xs.size < many.size)
+        assertTrue(xs.zipWithNext().all { (a, b) -> b - a >= 8f })
+        assertTrue(xs.all { it > 24f && it < 976f })
+        assertEquals(listOf(500f), dotPositions(listOf(0.5f), scale, 8f))
+        assertEquals(listOf(scale.x(0.3f), scale.x(0.5f)), dotPositions(listOf(0.3f, 0.3f, 0.5f), scale, 8f))
+    }
+
+    private fun timelineShares(lines: Int): List<Float> = BookTimeline(List(lines) { 10 }, emptyList(), slow).boundaryShares
+
+    @Test
     fun `live position moves between word reports, by one word at most when words are reported`() {
         val timeline = BookTimeline(words, emptyList(), slow) // 1 s a word, line 1 starts at 10 s
         val atWord = timeline.elapsedMs(1, 3) // 13 s
