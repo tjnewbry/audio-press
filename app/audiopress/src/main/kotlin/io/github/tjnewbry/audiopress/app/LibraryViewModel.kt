@@ -12,7 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import io.github.tjnewbry.audiopress.core.CancellationToken
 import io.github.tjnewbry.audiopress.core.ConversionCancelledException
-import io.github.tjnewbry.audiopress.core.TextSource
+import io.github.tjnewbry.audiopress.core.InputUnreadableException
 import io.github.tjnewbry.audiopress.pdfsource.AndroidPdfTextSource
 import java.io.File
 import java.util.concurrent.Executors
@@ -30,15 +30,23 @@ sealed interface ImportState {
     data class Failed(
         val message: String,
     ) : ImportState
+
+    /** The chosen PDF is being copied and opened, before the import screen appears. */
+    data class Preparing(
+        val fileName: String,
+    ) : ImportState
 }
 
-/** Turns a file-picker result into a [TextSource]. The one place that knows how PDFs are read. */
-fun interface PdfOpener {
-    fun open(
-        uri: Uri,
-        displayName: String,
-    ): TextSource
-}
+/**
+ * A PDF the user picked and that waits on the import screen for a page range and a name. [file] is a private copy that stays
+ * until the import ends or is cancelled; [title] is the PDF's own title, if it has one.
+ */
+class PendingImport(
+    val file: File,
+    val fileName: String,
+    val title: String?,
+    val totalPages: Int,
+)
 
 /** The library: the list of books, importing a PDF, and the book that is open. Survives screen rotation. */
 class LibraryViewModel(
@@ -54,6 +62,10 @@ class LibraryViewModel(
         private set
     var reader: ReaderSession? by mutableStateOf(null)
         private set
+
+    /** The picked PDF waiting on the import screen, or null. */
+    var pending: PendingImport? by mutableStateOf(null)
+        private set
     var loaded: Boolean by mutableStateOf(false)
         private set
     var openError: String? by mutableStateOf(null)
@@ -67,7 +79,7 @@ class LibraryViewModel(
     // One thread for all storage and conversion work, so imports and reads never overlap.
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "library") }
     private val store = BookStore(File(application.filesDir, "books"))
-    private val opener = PdfOpener { uri, name -> AndroidPdfTextSource.open(application, uri, name) }
+    private val stagingFolder = File(application.cacheDir, "import-staging")
 
     // Baking lives in the application, not here, so a bake carries on when this screen goes away (see [BakeCenter]).
     private val center = (application as AudioPressApp).bakeCenter
@@ -76,21 +88,76 @@ class LibraryViewModel(
     init {
         worker.execute {
             AndroidPdfTextSource.clearWorkFiles(application)
+            stagingFolder.deleteRecursively() // copies left by an import that was interrupted
             refresh()
         }
     }
 
+    /** Copies the picked PDF aside and opens it just far enough to learn its length and title; then the import screen shows. */
     fun importPdf(uri: Uri) {
-        if (importState is ImportState.Working) return
+        if (importState is ImportState.Working || importState is ImportState.Preparing || pending != null) return
         val fileName = queryFileName(uri) ?: "document.pdf"
-        importState = ImportState.Working(fileName)
+        importState = ImportState.Preparing(fileName)
+        worker.execute {
+            var copy: File? = null
+            importState =
+                try {
+                    val target = copyAside(uri).also { copy = it }
+                    AndroidPdfTextSource.open(getApplication(), target, fileName).use { source ->
+                        pending = PendingImport(target, fileName, source.title, source.totalPageCount)
+                    }
+                    ImportState.Idle
+                } catch (e: Exception) {
+                    Log.w(TAG, "Opening $fileName failed", e)
+                    copy?.delete()
+                    ImportState.Failed(importErrorMessage(fileName, e))
+                } catch (e: OutOfMemoryError) {
+                    Log.w(TAG, "Opening $fileName ran out of memory", e)
+                    copy?.delete()
+                    ImportState.Failed(importErrorMessage(fileName, e))
+                }
+        }
+    }
+
+    private fun copyAside(uri: Uri): File {
+        stagingFolder.mkdirs()
+        val target = File.createTempFile("pick-", ".pdf", stagingFolder)
+        try {
+            val input = getApplication<Application>().contentResolver.openInputStream(uri) ?: throw java.io.FileNotFoundException()
+            input.use { source -> target.outputStream().use { source.copyTo(it) } }
+        } catch (e: Exception) {
+            target.delete()
+            throw InputUnreadableException(target.name, e)
+        }
+        return target
+    }
+
+    /** Leaves the import screen without importing, and deletes the copy of the PDF. */
+    fun cancelPending() {
+        pending?.file?.delete()
+        pending = null
+    }
+
+    /**
+     * Imports pages [range] (the whole PDF when null) of the pending PDF as a book named [title]. The progress shows on the
+     * library screen; the copy of the PDF is deleted when the import ends, however it ends.
+     */
+    fun importPending(
+        range: IntRange?,
+        title: String,
+    ) {
+        val chosen = pending ?: return
+        pending = null
+        val fileName = chosen.fileName
+        importState = ImportState.Working(title)
         val token = CancellationToken() // a new one for every import
         importToken = token
         worker.execute {
             val result =
                 try {
-                    opener.open(uri, fileName).use { source ->
-                        BookImporter(store).import(source, titleFromFileName(fileName), token) { fraction ->
+                    val pages = range?.takeUnless { it.first == 1 && it.last == chosen.totalPages }
+                    AndroidPdfTextSource.open(getApplication(), chosen.file, fileName, pages).use { source ->
+                        BookImporter(store).import(source, title, token) { fraction ->
                             // Called on this worker thread; Compose state may be written from any thread.
                             (importState as? ImportState.Working)?.let { importState = it.copy(progress = fraction) }
                         }
@@ -104,6 +171,8 @@ class LibraryViewModel(
                 } catch (e: OutOfMemoryError) {
                     Log.w(TAG, "Import of $fileName ran out of memory", e)
                     ImportState.Failed(importErrorMessage(fileName, e))
+                } finally {
+                    chosen.file.delete()
                 }
             refresh()
             importState = result
@@ -217,6 +286,7 @@ class LibraryViewModel(
     }
 
     override fun onCleared() {
+        pending?.file?.delete()
         reader?.close()
         worker.shutdown()
     }

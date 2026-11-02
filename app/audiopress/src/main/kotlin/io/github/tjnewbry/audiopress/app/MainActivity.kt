@@ -99,12 +99,23 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(reader?.showVoices) { if (reader?.showVoices == true) askForNotifications() }
                 BackHandler(enabled = reader != null) { library.closeReader() }
                 BackHandler(enabled = reader == null && showLicences) { showLicences = false }
+                BackHandler(enabled = reader == null && library.pending != null) { library.cancelPending() }
                 // Declared after the one above, so it wins: back leaves the voice or progress screen first.
                 BackHandler(enabled = reader != null && (reader.showVoices || reader.showProgress)) { reader?.back() }
                 ExportDialogs((application as AudioPressApp).exportCenter)
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val modifier = Modifier.padding(padding).padding(horizontal = 16.dp)
+                    val pending = library.pending
                     when {
+                        reader == null && pending != null -> {
+                            ImportScreen(
+                                pending,
+                                onCancel = library::cancelPending,
+                                onImport = { range, name -> library.importPending(range, name) },
+                                modifier = modifier,
+                            )
+                        }
+
                         reader == null && showLicences -> {
                             LicencesScreen({ showLicences = false }, modifier)
                         }
@@ -147,7 +158,7 @@ private fun LibraryScreen(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) library.importPdf(uri)
         }
-    val importing = library.importState is ImportState.Working
+    val importing = library.importState is ImportState.Working || library.importState is ImportState.Preparing
     // The book being exported while the save dialog is open (by id, so it survives a rotation).
     var exportingId by rememberSaveable { mutableStateOf<String?>(null) }
     val savePicker =
@@ -166,6 +177,10 @@ private fun LibraryScreen(
         when (val state = library.importState) {
             ImportState.Idle -> {
                 // Nothing to show.
+            }
+
+            is ImportState.Preparing -> {
+                Text("Opening \"${state.fileName}\"...")
             }
 
             is ImportState.Working -> {
@@ -309,7 +324,7 @@ private fun BookRow(
 }
 
 @Composable
-private fun RenameDialog(
+internal fun RenameDialog(
     title: String,
     onDismiss: () -> Unit,
     onRename: (String) -> Unit,
