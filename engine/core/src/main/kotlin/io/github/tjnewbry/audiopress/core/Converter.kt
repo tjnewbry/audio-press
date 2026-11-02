@@ -49,7 +49,7 @@ class Converter(
         val steps = enabled.size + 1 // each rule, then the assembly
         var step = 0
         onProgress(ConversionProgress(ConversionStage.ANALYZING, step, steps))
-        val document = LayoutDocument(layout, pageCount)
+        val document = LayoutDocument(layout, pageCount, source.firstPage)
         var removals = Removals.NONE
         for (rule in enabled) {
             cancellation?.throwIfCancelled()

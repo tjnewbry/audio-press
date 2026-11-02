@@ -4,6 +4,7 @@ import io.github.tjnewbry.audiopress.core.ConversionOptions
 import io.github.tjnewbry.audiopress.core.Converter
 import io.github.tjnewbry.audiopress.core.CorruptPdfException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
+import io.github.tjnewbry.audiopress.core.InvalidPageRangeException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
 import io.github.tjnewbry.audiopress.testing.FixturePdf
@@ -208,6 +209,145 @@ class PdfBoxTextSourceTest {
         val page = PdfBoxTextSource.open(pdf).use { it.readPage(1) }
 
         assertEquals(10f, page.words.first().fontSize, 0.01f, "PDFBox reports whole points, and that is kept")
+    }
+
+    /** A book of [pages] generated pages; page n has its own rows of text, plus [extra] lines (page to text) at a given row. */
+    private fun book(
+        name: String,
+        pages: Int,
+        headerPages: Set<Int> = emptySet(),
+        extra: Map<Int, String> = emptyMap(),
+    ): Path =
+        fixturePdf(dir.resolve(name)) {
+            for (n in 1..pages) {
+                page {
+                    if (n in headerPages) text("Chapter Heading Words", x = 150f, y = 40f, size = 9f)
+                    for (row in 0 until 20) {
+                        text("Page $n row $row holds a plain sentence of ordinary body text.", x = 72f, y = 80f + row * 13.5f, size = 10f)
+                    }
+                    extra[n]?.let { text(it, x = 72f, y = 400f, size = 10f) }
+                }
+            }
+        }
+
+    private fun spoken(result: io.github.tjnewbry.audiopress.core.ConversionResult) =
+        result.transcript.segments.joinToString(" ") { s -> s.tokens.joinToString(" ") { it.text } }
+
+    @Test
+    fun `a page range offers only those pages and keeps the PDF's own page numbers`() {
+        val pdf = book("range.pdf", pages = 8)
+
+        PdfBoxTextSource.open(pdf, pages = 3..5).use { source ->
+            assertEquals(8, source.totalPageCount)
+            assertEquals(3, source.pageCount)
+            assertEquals(3, source.firstPage)
+            assertEquals(3..5, source.pages)
+            assertEquals(3, source.readPage(1).index)
+            assertEquals(5, source.readPage(3).index)
+            assertEquals(
+                "Page",
+                source
+                    .readPage(2)
+                    .words
+                    .first()
+                    .text,
+            )
+            assertEquals("4", source.readPage(2).words[1].text)
+            assertFailsWith<IllegalArgumentException> { source.readPage(4) }
+        }
+    }
+
+    @Test
+    fun `a conversion of a page range reports the PDF's own page numbers and none from outside`() {
+        val pdf = book("range-convert.pdf", pages = 8)
+
+        val result = PdfBoxTextSource.open(pdf, pages = 4..6).use { Converter().convert(it, "range-convert.pdf", ConversionOptions()) }
+
+        val pages =
+            result.transcript.segments
+                .flatMap { s -> s.tokens.map { it.page } }
+                .toSet()
+        assertEquals(setOf(4, 5, 6), pages)
+        assertEquals(3 * 20 * 12, result.transcript.wordCount)
+        assertEquals(listOf(4, 5, 6), result.document.pages.map { it.index })
+    }
+
+    @Test
+    fun `no range gives the same transcript as the whole page range`() {
+        val pdf = book("whole.pdf", pages = 6, headerPages = setOf(1, 2, 3, 4, 5, 6))
+
+        val none =
+            PdfBoxTextSource.open(pdf).use { source ->
+                Converter().convert(source, "w.pdf", ConversionOptions()).also {
+                    assertEquals(1, source.firstPage)
+                }
+            }
+        val all = PdfBoxTextSource.open(pdf, pages = 1..6).use { Converter().convert(it, "w.pdf", ConversionOptions()) }
+
+        assertEquals(none.transcript, all.transcript)
+        assertEquals(none.removals, all.removals)
+    }
+
+    @Test
+    fun `a range outside the PDF or backwards is refused with a clear message`() {
+        val pdf = book("invalid.pdf", pages = 5)
+
+        assertEquals(
+            "The first page is 0, but pages start at 1",
+            assertFailsWith<InvalidPageRangeException> {
+                PdfBoxTextSource.open(
+                    pdf,
+                    pages =
+                        0..3,
+                )
+            }.message,
+        )
+        assertEquals(
+            "The last page is 6, but the PDF has only 5 pages",
+            assertFailsWith<InvalidPageRangeException> {
+                PdfBoxTextSource.open(
+                    pdf,
+                    pages =
+                        2..6,
+                )
+            }.message,
+        )
+        assertEquals(
+            "The first page (4) is after the last page (2)",
+            assertFailsWith<InvalidPageRangeException> {
+                PdfBoxTextSource.open(
+                    pdf,
+                    pages =
+                        4..2,
+                )
+            }.message,
+        )
+        PdfBoxTextSource.open(pdf, pages = 5..5).use { assertEquals(1, it.pageCount) }
+    }
+
+    @Test
+    fun `pages outside the range do not make a header inside it look repeated`() {
+        // The heading is on pages 3 and 4 only. Read whole, both are removed as repeats; read from page 4, it is not repeated.
+        val pdf = book("headers.pdf", pages = 6, headerPages = setOf(3, 4))
+
+        val whole = PdfBoxTextSource.open(pdf).use { spoken(Converter().convert(it, "h.pdf", ConversionOptions())) }
+        val range = PdfBoxTextSource.open(pdf, pages = 4..6).use { spoken(Converter().convert(it, "h.pdf", ConversionOptions())) }
+
+        assertFalse("Chapter Heading Words" in whole)
+        assertTrue("Chapter Heading Words" in range)
+    }
+
+    @Test
+    fun `the front and back of a page range, not of the PDF, decide where copyright pages are skipped`() {
+        // Page 30 mentions an ISBN. In the whole 40-page PDF it is mid-book, and in the range 11..40 it is mid-range too.
+        // Counting the range as pages 1..30 but comparing the PDF's own numbers would wrongly treat it as the back.
+        val pdf = book("copyright.pdf", pages = 40, extra = mapOf(30 to "ISBN 000 mid book", 38 to "ISBN 111 back", 12 to "ISBN 222 front"))
+
+        val text = PdfBoxTextSource.open(pdf, pages = 11..40).use { spoken(Converter().convert(it, "c.pdf", ConversionOptions())) }
+
+        assertTrue("ISBN 000 mid book" in text)
+        assertFalse("ISBN 111 back" in text)
+        assertFalse("ISBN 222 front" in text)
     }
 
     private companion object {

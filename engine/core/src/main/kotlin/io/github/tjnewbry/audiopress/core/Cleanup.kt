@@ -7,6 +7,8 @@ data class LayoutDocument(
     val pages: List<LayoutPage>,
     /** The total number of pages in the PDF, including pages not selected with `--pages`. */
     val pageCount: Int,
+    /** The PDF's own number of the first page of the document (see [TextSource.firstPage]); 1 unless limited to a range. */
+    val firstPage: Int = 1,
 ) {
     val stats: DocumentStats = DocumentStats.measure(pages)
 }

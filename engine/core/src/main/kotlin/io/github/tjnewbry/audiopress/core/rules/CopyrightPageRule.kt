@@ -22,8 +22,11 @@ object CopyrightPageRule : CleanupRule {
     ): List<Removal> =
         document
             .keptPages(removed)
-            .filter { it.index <= FRONT_PAGES || it.index > document.pageCount - BACK_PAGES }
-            .mapNotNull { page ->
+            .filter {
+                // Front and back are of the offered pages, which differ from the PDF's own numbers when limited to a range.
+                val position = it.index - document.firstPage + 1
+                position <= FRONT_PAGES || position > document.pageCount - BACK_PAGES
+            }.mapNotNull { page ->
                 val text = page.lines.joinToString(" ") { it.text }.lowercase()
                 MARKERS.firstOrNull { it in text }?.let { Removal(id, PageTarget(page.index), "", "contains \"$it\"") }
             }

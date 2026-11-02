@@ -16,6 +16,7 @@ import io.github.tjnewbry.audiopress.core.DocumentTitle
 import io.github.tjnewbry.audiopress.core.ExtractionNotPermittedException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.InputUnreadableException
+import io.github.tjnewbry.audiopress.core.InvalidPageRangeException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
 import io.github.tjnewbry.audiopress.core.SourcePage
@@ -35,6 +36,11 @@ import kotlin.math.abs
  * deletes the temporary copy and scratch files. Opening and reading block and are slow for big books, so
  * call them off the main thread. One instance must be used from one thread at a time.
  *
+ * Pass `pages` to [open] to read only those pages of the PDF (1-based, inclusive; null is every page). [pageCount] is
+ * then the size of the range and [readPage] counts from its first page, but every [SourcePage.index] is the PDF's own
+ * page number. [totalPageCount] is the length of the whole PDF. A range outside the PDF throws
+ * [InvalidPageRangeException].
+ *
  * Failures are the engine's typed exceptions, with the same meaning as on the desktop: [InputNotFoundException],
  * [InputUnreadableException], [NotAPdfException], [CorruptPdfException], [PdfEncryptedException], and
  * [ExtractionNotPermittedException].
@@ -43,6 +49,7 @@ class AndroidPdfTextSource private constructor(
     private val document: PDDocument,
     private val name: String,
     private val cleanup: List<File>,
+    range: IntRange?,
 ) : TextSource {
     private val collector = WordCollector()
     private var closed = false
@@ -50,26 +57,36 @@ class AndroidPdfTextSource private constructor(
     /** The title from the PDF's metadata (see [TextSource.title]), or null. */
     override val title: String? = readTitle(document)
 
-    override val pageCount: Int get() = document.numberOfPages
+    /** The number of pages in the whole PDF, whatever range was chosen. Use it for "PDF length: N pages". */
+    val totalPageCount: Int = document.numberOfPages
+
+    /** The PDF's own pages this source offers (1-based, inclusive): the chosen range, or every page. */
+    val pages: IntRange = range ?: 1..totalPageCount
+
+    /** The number of pages in the chosen range (all pages when none was chosen). [readPage] takes 1 to this. */
+    override val pageCount: Int get() = pages.last - pages.first + 1
+
+    override val firstPage: Int get() = pages.first
 
     override fun readPage(pageIndex: Int): SourcePage {
         require(pageIndex in 1..pageCount) { "page $pageIndex is outside 1..$pageCount" }
+        val pdfPage = pages.first + pageIndex - 1 // the PDF's own number, which the page and its words keep
         try {
-            val page = document.getPage(pageIndex - 1)
+            val page = document.getPage(pdfPage - 1)
             val crop = page.cropBox
             val sideways = page.rotation % 180 != 0
             return SourcePage(
-                index = pageIndex,
+                index = pdfPage,
                 width = if (sideways) crop.height else crop.width,
                 height = if (sideways) crop.width else crop.height,
-                words = collector.collect(document, pageIndex),
+                words = collector.collect(document, pdfPage),
             )
         } catch (e: IOException) {
-            Log.w(TAG, "page $pageIndex of $name could not be read", e)
+            Log.w(TAG, "page $pdfPage of $name could not be read", e)
             throw CorruptPdfException(name, e)
         } catch (e: RuntimeException) {
             // PDFBox 2.0 throws unchecked exceptions (for example NullPointerException) from some damaged pages.
-            Log.w(TAG, "page $pageIndex of $name could not be read", e)
+            Log.w(TAG, "page $pdfPage of $name could not be read", e)
             throw CorruptPdfException(name, e)
         }
     }
@@ -110,10 +127,11 @@ class AndroidPdfTextSource private constructor(
             context: Context,
             uri: Uri,
             displayName: String? = null,
+            pages: IntRange? = null,
         ): AndroidPdfTextSource {
             beginOpening()
             try {
-                return openUri(context, uri, displayName)
+                return openUri(context, uri, displayName, pages)
             } catch (e: Throwable) {
                 openSources.decrementAndGet()
                 throw e
@@ -124,6 +142,7 @@ class AndroidPdfTextSource private constructor(
             context: Context,
             uri: Uri,
             displayName: String?,
+            pages: IntRange?,
         ): AndroidPdfTextSource {
             val app = context.applicationContext
             val name = displayName ?: queryDisplayName(app, uri) ?: uri.lastPathSegment ?: "document.pdf"
@@ -136,7 +155,7 @@ class AndroidPdfTextSource private constructor(
                 }
             try {
                 copyTo(app, uri, copy, name)
-                return openFile(app, copy, name, deleteOnClose = true)
+                return openFile(app, copy, name, deleteOnClose = true, pages = pages)
             } catch (e: Throwable) {
                 copy.delete()
                 throw e
@@ -148,10 +167,11 @@ class AndroidPdfTextSource private constructor(
             context: Context,
             file: File,
             displayName: String = file.name,
+            pages: IntRange? = null,
         ): AndroidPdfTextSource {
             beginOpening()
             try {
-                return openFile(context.applicationContext, file, displayName, deleteOnClose = false)
+                return openFile(context.applicationContext, file, displayName, deleteOnClose = false, pages = pages)
             } catch (e: Throwable) {
                 openSources.decrementAndGet()
                 throw e
@@ -163,6 +183,7 @@ class AndroidPdfTextSource private constructor(
             file: File,
             name: String,
             deleteOnClose: Boolean,
+            pages: IntRange?,
         ): AndroidPdfTextSource {
             if (!file.exists()) throw InputNotFoundException(name)
             if (!file.isFile || !file.canRead()) throw InputUnreadableException(name)
@@ -177,7 +198,12 @@ class AndroidPdfTextSource private constructor(
                 document.close()
                 throw ExtractionNotPermittedException(name)
             }
-            return AndroidPdfTextSource(document, name, if (deleteOnClose) listOf(file) else emptyList())
+            if (pages != null && (pages.first < 1 || pages.last > document.numberOfPages || pages.first > pages.last)) {
+                val total = document.numberOfPages
+                document.close()
+                throw InvalidPageRangeException(pages.first, pages.last, total)
+            }
+            return AndroidPdfTextSource(document, name, if (deleteOnClose) listOf(file) else emptyList(), pages)
         }
 
         /**

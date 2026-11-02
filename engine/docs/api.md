@@ -103,6 +103,17 @@ val total = result.transcript.estimatedSeconds(wordsPerMinute = 170)
 
 The engine keeps the layout of every selected page until the conversion ends, because the rules compare pages. Measured on the Android 13 emulator with its default 192 MB heap, for generated pages of about 420 words: the PDF reader (PdfBox-Android) holds about 35 MB whatever the book size, the layout about 55 KB per page, and the finished transcript about 30 KB per page more. So a 1,000-page book (about 420,000 words) peaks near 100 MB, and the largest book that converts is roughly 3,000 pages (1.25 million words) with the source closed early (see above), about 2,700 without. A phone with a larger heap, or `android:largeHeap`, goes further. Equal words share one string while pages are read, which saves about a fifth of the layout memory. Keep only `result.transcript` once the conversion is done: `ConversionResult.document` holds the whole layout.
 
+## Converting only a range of pages
+
+Both PDF readers take an optional page range, for example to skip front matter. `PdfBoxTextSource.open(path, pages = 12..340)` and `AndroidPdfTextSource.open(context, uri, displayName, pages = 12..340)` (the `File` overload has the same `pages` argument). The range is 1-based and inclusive; `null`, the default, means the whole PDF and behaves exactly as before.
+
+* **Only the range is read, analyzed, and kept**, so time and memory fall with it. Pages outside it do not influence the output: a header that repeats only on pages outside the range is not removed, and the front and back of the book (where copyright pages are skipped) mean the front and back of the range.
+* **Page numbers stay the PDF's own.** `SourcePage.index`, `Token.page`, `Span.page`, `Warning.page`, the report, and `[[page N]]` markers all use the PDF's numbers. `readPage` counts from the start of the range (1 to `pageCount`).
+* **`pageCount`** is the number of pages in the range (use it for "N pages" in the library). **`totalPageCount`** (a property of both sources, not of `TextSource`) is the length of the whole PDF, for "PDF length: N pages". `pages` is the range itself and `TextSource.firstPage` is its first page (1 without a range).
+* **Opening with a bad range** (first below 1, last above the page count, first after last) throws `InvalidPageRangeException` with a message such as "The last page is 6, but the PDF has only 5 pages". It is an `AudioPressException`; the source is closed again before it is thrown.
+* `ConversionOptions.pages` (`--pages`) still works on top of a range, and counts from the start of the range.
+* To show the length before the user picks a range, open the PDF without one, read `totalPageCount`, close it, and open it again with the range.
+
 ## Implementing a `TextSource`
 
 This is what an Android app must provide, because PDFBox does not run on Android.
@@ -110,6 +121,7 @@ This is what an Android app must provide, because PDFBox does not run on Android
 ```kotlin
 interface TextSource : AutoCloseable {
     val pageCount: Int
+    val firstPage: Int                          // optional: the PDF's number of the first page offered (default 1)
     val title: String?                          // optional: the document's own title, or null (the default)
     fun readPage(pageIndex: Int): SourcePage   // 1-based
 }
@@ -130,7 +142,7 @@ A `SourcePage` has `index`, `width`, `height`, and `words`. A `SourceWord` has `
 
 ## Errors
 
-`Converter.convert` throws `NoPagesSelectedException` (the page selection matches no pages) or `NoTextLayerException` (no selected page has text). A `TextSource` throws the others when it opens a file. The PDFBox source throws `InputNotFoundException`, `InputUnreadableException`, `NotAPdfException`, `CorruptPdfException`, `PdfEncryptedException`, and `ExtractionNotPermittedException`. All have messages meant for the user. A cancelled conversion throws `ConversionCancelledException`, which is also an `AudioPressException`: catch it before the general case, and do not show it as an error.
+`Converter.convert` throws `NoPagesSelectedException` (the page selection matches no pages) or `NoTextLayerException` (no selected page has text). A `TextSource` throws the others when it opens a file. The PDFBox source throws `InputNotFoundException`, `InputUnreadableException`, `NotAPdfException`, `CorruptPdfException`, `PdfEncryptedException`, and `ExtractionNotPermittedException`; opening with a bad page range throws `InvalidPageRangeException`. All have messages meant for the user. A cancelled conversion throws `ConversionCancelledException`, which is also an `AudioPressException`: catch it before the general case, and do not show it as an error.
 
 ## Android compatibility
 

@@ -12,6 +12,7 @@ import io.github.tjnewbry.audiopress.core.ConversionOptions
 import io.github.tjnewbry.audiopress.core.Converter
 import io.github.tjnewbry.audiopress.core.CorruptPdfException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
+import io.github.tjnewbry.audiopress.core.InvalidPageRangeException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
 import io.github.tjnewbry.audiopress.core.RuleId
@@ -311,6 +312,123 @@ class AndroidPdfTextSourceTest {
         android.util.Log.i("AudioPressTiming", "converted $pages generated pages in %.1f s".format(seconds))
         assertEquals(pages * 38 * 13, result.transcript.wordCount)
         assertTrue(result.removals.any { it.rule == RuleId.RUNNING_HEADERS }, "the running header is removed")
+    }
+
+    private fun book(
+        name: String,
+        pages: Int,
+        headerPages: Set<Int> = emptySet(),
+        extra: Map<Int, String> = emptyMap(),
+    ): File =
+        pdf(name) {
+            for (n in 1..pages) {
+                page {
+                    if (n in headerPages) text("Chapter Heading Words", x = 150f, y = 40f, size = 9f)
+                    for (row in 0 until 20) {
+                        text("Page $n row $row holds a plain sentence of ordinary body text.", x = 72f, y = 80f + row * 13.5f, size = 10f)
+                    }
+                    extra[n]?.let { text(it, x = 72f, y = 400f, size = 10f) }
+                }
+            }
+        }
+
+    private fun spoken(result: io.github.tjnewbry.audiopress.core.ConversionResult) =
+        result.transcript.segments.joinToString(" ") { s -> s.tokens.joinToString(" ") { it.text } }
+
+    @Test
+    fun aPageRangeOffersOnlyThosePagesAndKeepsThePdfsOwnPageNumbers() {
+        val file = book("range.pdf", pages = 8)
+
+        AndroidPdfTextSource.open(context, file, pages = 4..6).use { source ->
+            assertEquals(8, source.totalPageCount)
+            assertEquals(3, source.pageCount)
+            assertEquals(4, source.firstPage)
+            assertEquals(4, source.readPage(1).index)
+            assertEquals("4", source.readPage(1).words[1].text)
+            assertEquals(6, source.readPage(3).index)
+            val result = Converter().convert(source, "range.pdf", ConversionOptions())
+            assertEquals(
+                setOf(4, 5, 6),
+                result.transcript.segments
+                    .flatMap { s -> s.tokens.map { it.page } }
+                    .toSet(),
+            )
+        }
+    }
+
+    @Test
+    fun aRangeOutsideThePdfOrBackwardsIsRefused() {
+        val file = book("invalid.pdf", pages = 5)
+
+        assertEquals(
+            "The first page is 0, but pages start at 1",
+            assertFailsWith<InvalidPageRangeException> {
+                AndroidPdfTextSource.open(
+                    context,
+                    file,
+                    pages =
+                        0..3,
+                )
+            }.message,
+        )
+        assertEquals(
+            "The last page is 6, but the PDF has only 5 pages",
+            assertFailsWith<InvalidPageRangeException> {
+                AndroidPdfTextSource.open(
+                    context,
+                    file,
+                    pages =
+                        2..6,
+                )
+            }.message,
+        )
+        assertEquals(
+            "The first page (4) is after the last page (2)",
+            assertFailsWith<InvalidPageRangeException> {
+                AndroidPdfTextSource.open(
+                    context,
+                    file,
+                    pages =
+                        4..2,
+                )
+            }.message,
+        )
+        AndroidPdfTextSource.open(context, file).use { assertEquals(5, it.pageCount) }
+    }
+
+    @Test
+    fun pagesOutsideTheRangeDoNotMakeAHeaderInsideItLookRepeated() {
+        val file = book("headers.pdf", pages = 6, headerPages = setOf(3, 4))
+
+        val whole = AndroidPdfTextSource.open(context, file).use { spoken(Converter().convert(it, "h.pdf", ConversionOptions())) }
+        val range =
+            AndroidPdfTextSource
+                .open(
+                    context,
+                    file,
+                    pages = 4..6,
+                ).use { spoken(Converter().convert(it, "h.pdf", ConversionOptions())) }
+
+        assertFalse("Chapter Heading Words" in whole)
+        assertTrue("Chapter Heading Words" in range)
+    }
+
+    @Test
+    fun theFrontAndBackOfAPageRangeDecideWhereCopyrightPagesAreSkipped() {
+        val file =
+            book("copyright.pdf", pages = 40, extra = mapOf(30 to "ISBN 000 mid book", 38 to "ISBN 111 back", 12 to "ISBN 222 front"))
+
+        val text =
+            AndroidPdfTextSource
+                .open(
+                    context,
+                    file,
+                    pages = 11..40,
+                ).use { spoken(Converter().convert(it, "c.pdf", ConversionOptions())) }
+
+        assertTrue("ISBN 000 mid book" in text)
+        assertFalse("ISBN 111 back" in text)
+        assertFalse("ISBN 222 front" in text)
     }
 
     private companion object {

@@ -6,6 +6,7 @@ import io.github.tjnewbry.audiopress.core.DocumentTitle
 import io.github.tjnewbry.audiopress.core.ExtractionNotPermittedException
 import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.InputUnreadableException
+import io.github.tjnewbry.audiopress.core.InvalidPageRangeException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
 import io.github.tjnewbry.audiopress.core.SourcePage
@@ -21,30 +22,46 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.math.abs
 
-/** Reads text-based PDFs with Apache PDFBox. Open one with [open]. */
+/**
+ * Reads text-based PDFs with Apache PDFBox. Open one with [open].
+ *
+ * With a page range, only those pages are offered: [pageCount] is the size of the range and [readPage] counts from
+ * its first page, but every [SourcePage.index] is the PDF's own page number. [totalPageCount] is the whole PDF.
+ */
 class PdfBoxTextSource private constructor(
     private val document: PDDocument,
     private val name: String,
+    range: IntRange?,
 ) : TextSource {
     private val collector = WordCollector()
 
     override val title: String? = readTitle(document)
 
-    override val pageCount: Int get() = document.numberOfPages
+    /** The number of pages in the whole PDF, whatever range was chosen. */
+    val totalPageCount: Int = document.numberOfPages
+
+    /** The PDF's own pages this source offers (1-based, inclusive): the chosen range, or every page. */
+    val pages: IntRange = range ?: 1..totalPageCount
+
+    /** The number of pages in the chosen range (all pages when none was chosen). [readPage] takes 1 to this. */
+    override val pageCount: Int get() = pages.last - pages.first + 1
+
+    override val firstPage: Int get() = pages.first
 
     override fun readPage(pageIndex: Int): SourcePage {
         require(pageIndex in 1..pageCount) { "page $pageIndex is outside 1..$pageCount" }
-        val page = document.getPage(pageIndex - 1)
+        val pdfPage = pages.first + pageIndex - 1 // the PDF's own number, which the page and its words keep
+        val page = document.getPage(pdfPage - 1)
         val crop = page.cropBox
         val sideways = page.rotation % 180 != 0
         val words =
             try {
-                collector.collect(document, pageIndex)
+                collector.collect(document, pdfPage)
             } catch (e: IOException) {
                 throw CorruptPdfException(name, e)
             }
         return SourcePage(
-            index = pageIndex,
+            index = pdfPage,
             width = if (sideways) crop.height else crop.width,
             height = if (sideways) crop.width else crop.height,
             words = words,
@@ -68,8 +85,15 @@ class PdfBoxTextSource private constructor(
         }
 
     companion object {
-        /** Opens [path], throwing a typed [io.github.tjnewbry.audiopress.core.AudioPressException] when it cannot be read. */
-        fun open(path: Path): PdfBoxTextSource {
+        /**
+         * Opens [path], throwing a typed [io.github.tjnewbry.audiopress.core.AudioPressException] when it cannot be read.
+         * [pages] limits the source to those pages of the PDF (1-based, inclusive); null means every page. A range that
+         * starts before page 1, ends after the last page, or is backwards throws [InvalidPageRangeException].
+         */
+        fun open(
+            path: Path,
+            pages: IntRange? = null,
+        ): PdfBoxTextSource {
             val name = path.toString()
             if (!Files.exists(path)) throw InputNotFoundException(name)
             if (!Files.isRegularFile(path) || !Files.isReadable(path)) throw InputUnreadableException(name)
@@ -95,7 +119,12 @@ class PdfBoxTextSource private constructor(
                 document.close()
                 throw ExtractionNotPermittedException(name)
             }
-            return PdfBoxTextSource(document, name)
+            if (pages != null && (pages.first < 1 || pages.last > document.numberOfPages || pages.first > pages.last)) {
+                val total = document.numberOfPages
+                document.close()
+                throw InvalidPageRangeException(pages.first, pages.last, total)
+            }
+            return PdfBoxTextSource(document, name, pages)
         }
 
         /** PDF files may have a few bytes of junk before the header; readers accept it within the first 1 KB. */

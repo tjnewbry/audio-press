@@ -37,6 +37,19 @@ class NoPagesSelectedException(
     pageCount: Int,
 ) : AudioPressException("--pages $selection selects no pages; the PDF has $pageCount pages")
 
+/** A source was asked to read pages [first] to [last], but the PDF has only [pageCount] pages (or the range is backwards). */
+class InvalidPageRangeException(
+    first: Int,
+    last: Int,
+    pageCount: Int,
+) : AudioPressException(
+        when {
+            first < 1 -> "The first page is $first, but pages start at 1"
+            last > pageCount -> "The last page is $last, but the PDF has only $pageCount pages"
+            else -> "The first page ($first) is after the last page ($last)"
+        },
+    )
+
 class NoTextLayerException(
     path: String,
 ) : AudioPressException(

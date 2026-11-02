@@ -58,7 +58,14 @@ data class SourcePage(
  * source in Milestone Charlie.
  */
 interface TextSource : AutoCloseable {
+    /** The number of pages this source offers: the pages [readPage] accepts are 1 to [pageCount]. */
     val pageCount: Int
+
+    /**
+     * The PDF's own page number of the first page this source offers (the page [readPage] returns for 1). It is 1
+     * unless the source was limited to a range of pages. [SourcePage.index] always carries the PDF's own number.
+     */
+    val firstPage: Int get() = 1
 
     /**
      * The document's own title from its metadata, trimmed, or null when there is none or it is junk such as
@@ -66,6 +73,6 @@ interface TextSource : AutoCloseable {
      */
     val title: String? get() = null
 
-    /** Reads one page. [pageIndex] is 1-based. */
+    /** Reads one page. [pageIndex] is 1-based and counts from the first offered page (see [firstPage]). */
     fun readPage(pageIndex: Int): SourcePage
 }
