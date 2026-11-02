@@ -160,3 +160,28 @@ data class ScrollFollow(
     /** The box moves by itself to the playing line only while locked. */
     val autoScrolls: Boolean get() = locked
 }
+
+/**
+ * The line of text under the seeker bar, worked out from nothing but the state it describes: the [mode] in use, the
+ * state of the [bake], whether playback is [waiting] for a clip, and the time. Every input is state the screen reads, so
+ * the text is right whenever any of them changes (a switch between live speech and baked audio, a bake that finishes,
+ * is cancelled or fails), not only when the bar is touched.
+ */
+fun playerStatusText(
+    mode: PlaybackMode,
+    bake: BakeState,
+    waiting: Boolean,
+    elapsedMs: Long,
+    totalMs: Long,
+): String {
+    val times = "${formatDuration(elapsedMs / MS_PER_SECOND)} / ${formatDuration(totalMs / MS_PER_SECOND)}"
+    val baking = bake is BakeState.Baking || bake is BakeState.Downloading
+    return when {
+        mode == PlaybackMode.BAKED && waiting && baking -> "Waiting for audio…"
+        mode == PlaybackMode.BAKED && baking -> "$times (listening while baking)"
+        mode == PlaybackMode.BAKED -> "$times (baked audio)"
+        else -> "$times (estimated, live speech)"
+    }
+}
+
+private const val MS_PER_SECOND = 1000.0

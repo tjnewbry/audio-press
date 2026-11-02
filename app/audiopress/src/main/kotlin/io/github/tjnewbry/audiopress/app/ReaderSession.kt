@@ -100,6 +100,8 @@ class ReaderSession(
                 if (bakedPlayer == null && state is BakeState.Baked) bakedPlayer = createBakedPlayer(switching.position)
                 bakedPlayer?.onClipsReady() // a clip may have landed that playback is waiting for
                 if (state is BakeState.NotBaked || state is BakeState.Failed) bakedPlayer?.stopWaiting()
+                if (state is BakeState.Baked) switching.liveForNow = false // everything is baked now
+                leaveBakedAudioIfGone(switching)
             }
         }
         bakeState = bake.state
@@ -168,19 +170,42 @@ class ReaderSession(
         val timeline = timeline()
         val point = timeline.lineAt((share.coerceIn(0.0, 1.0) * timeline.totalMs).toLong())
         val line = utterances.getOrNull(point.index) ?: return
-        switcher?.seekTo(Position(line.paragraph, line.start), point.intoMs, player.status == PlaybackStatus.PLAYING)
+        val switching = switcher ?: return
+        routeFor(point.index, switching) // exact in the baked part; the unbaked part snaps to the line and uses live speech
+        // A seek never starts playback: it carries on if it was playing and stays paused if it was paused.
+        switching.seekTo(Position(line.paragraph, line.start), point.intoMs, player.status == PlaybackStatus.PLAYING)
     }
 
-    /** True while the book is read from baked clips that are still being made. */
-    val listeningWhileBaking: Boolean get() = mode == PlaybackMode.BAKED && bake.clips == null
-
-    /** Opens the reader on this book and plays the clips as they are baked, from where reading is; the bake carries on. */
-    fun listenWhileBaking() {
+    /**
+     * "Go to player": opens the reader on this book, ready to play the clips as they are baked from where reading is, but
+     * paused (it does not start playing). The bake carries on.
+     */
+    fun goToPlayer() {
         showProgress = false
         if (bakedPlayer == null) bakedPlayer = createBakedPlayer(switcher?.position)
         preferLive = false
-        switcher?.preferLive = false
-        switcher?.let { it.jumpTo(it.position) }
+        switcher?.let {
+            it.preferLive = false
+            routeFor(utteranceIndexAt(utterances, it.position) ?: 0, it)
+            it.seekTo(it.position, 0, play = false)
+        }
+    }
+
+    /** A bake ended without finishing while baked audio was in use: carry on in live speech from the same place, paused. */
+    private fun leaveBakedAudioIfGone(switching: SwitchingPlayback) {
+        val ended = bakeState !is BakeState.Baking && bakeState !is BakeState.Downloading
+        if (!ended || bake.clips != null || switching.mode != PlaybackMode.BAKED) return
+        val where = bakedPlayer?.position ?: switching.position
+        switching.refreshMode()
+        switching.seekTo(where, 0, play = false)
+    }
+
+    /** While a bake is running, lines not baked yet are read with live speech; baked lines (and a finished bake) with the audio. */
+    private fun routeFor(
+        index: Int,
+        switching: SwitchingPlayback,
+    ) {
+        switching.liveForNow = bake.clips == null && bakeState is BakeState.Baking && index >= timeline().bakedCount
     }
 
     fun togglePlayback() {
@@ -190,7 +215,9 @@ class ReaderSession(
     /** Starts reading from the beginning of line [index]. */
     fun jumpTo(index: Int) {
         val line = utterances.getOrNull(index) ?: return
-        switcher?.jumpTo(Position(line.paragraph, line.start))
+        val switching = switcher ?: return
+        routeFor(index, switching)
+        switching.jumpTo(Position(line.paragraph, line.start))
     }
 
     var preferLive: Boolean by mutableStateOf(false)
@@ -201,6 +228,7 @@ class ReaderSession(
         switcher?.pause()
         preferLive = live
         switcher?.preferLive = live
+        switcher?.refreshMode() // the mode (and so the text under the bar) changes now, not when playback next starts
     }
 
     /** Pauses (and so saves the position); used when the app goes to the background. */

@@ -21,14 +21,14 @@ import kotlin.math.roundToInt
 /**
  * The full-screen progress of a bake: the download of the model (when needed), then the baking. Cancel is top left.
  * While baking it shows the time left, and offers to run in the background (the app goes to the home screen and the
- * bake carries on) or to listen to the clips as they are made.
+ * bake carries on) or to go to the player, where the clips can be played as they are made.
  */
 @Composable
 fun BakeProgressScreen(
     state: BakeState,
     onCancel: () -> Unit,
     onBackground: () -> Unit,
-    onListen: () -> Unit,
+    onGoToPlayer: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cancelling = (state as? BakeState.Downloading)?.cancelling ?: (state as? BakeState.Baking)?.cancelling ?: false
@@ -59,8 +59,8 @@ fun BakeProgressScreen(
                     ProgressBar(if (state.total > 0) state.done.toFloat() / state.total else 0f)
                     Text("${state.done} of ${state.total}", style = MaterialTheme.typography.bodyLarge)
                     Text(remainingText(state), style = MaterialTheme.typography.bodyLarge)
-                    Button(onClick = onListen, enabled = !state.cancelling, modifier = Modifier.padding(top = 32.dp)) {
-                        Text("Listen while baking")
+                    Button(onClick = onGoToPlayer, enabled = !state.cancelling, modifier = Modifier.padding(top = 32.dp)) {
+                        Text("Go to player")
                     }
                     OutlinedButton(onClick = onBackground, modifier = Modifier.padding(top = 8.dp)) { Text("Run in background") }
                 }

@@ -29,10 +29,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,12 +45,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -108,7 +115,7 @@ class MainActivity : ComponentActivity() {
                                 reader.bakeState,
                                 onCancel = reader::cancelBake,
                                 onBackground = { moveTaskToBack(true) },
-                                onListen = reader::listenWhileBaking,
+                                onGoToPlayer = reader::goToPlayer,
                                 modifier = modifier,
                             )
                         }
@@ -190,6 +197,8 @@ private fun LibraryScreen(
                                 book,
                                 baked = book.id in library.bakedBooks,
                                 onDelete = { everything -> library.delete(book, everything) },
+                                onRename = { title -> library.rename(book, title) },
+                                onExport = { library.exportBakedAudio(book) },
                                 onClick = { library.open(book) },
                             )
                         }
@@ -206,20 +215,58 @@ private fun BookRow(
     book: Book,
     baked: Boolean,
     onDelete: (everything: Boolean) -> Unit,
+    onRename: (String) -> Unit,
+    onExport: () -> String,
     onClick: () -> Unit,
 ) {
     var asking by rememberSaveable { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var renaming by rememberSaveable { mutableStateOf(false) }
+    var notice by rememberSaveable { mutableStateOf<String?>(null) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(book.title, style = MaterialTheme.typography.titleMedium)
                 val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(book.importedAt))
                 Text("%,d words, imported %s".format(book.wordCount, date), style = MaterialTheme.typography.bodyMedium)
                 if (baked) Text("Baked audio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
-            TextButton(onClick = { asking = true }) { Text("Delete") }
+            Box {
+                TextButton(
+                    onClick = { menuOpen = true },
+                    modifier = Modifier.semantics { contentDescription = "Options for ${book.title}" },
+                ) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    // Not enabled-greyed in the sense of a dead click: a tap on it explains what is missing.
+                    DropdownMenuItem(
+                        text = {
+                            Text("Export baked audio", color = if (baked) Color.Unspecified else MaterialTheme.colorScheme.outline)
+                        },
+                        onClick = {
+                            menuOpen = false
+                            notice = if (baked) onExport() else "Must bake audio first."
+                        },
+                    )
+                    DropdownMenuItem(text = { Text("Rename") }, onClick = {
+                        menuOpen = false
+                        renaming = true
+                    })
+                    DropdownMenuItem(text = { Text("Deletion") }, onClick = {
+                        menuOpen = false
+                        asking = true
+                    })
+                }
+            }
         }
     }
+    notice?.let { message ->
+        AlertDialog(
+            onDismissRequest = { notice = null },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { notice = null }) { Text("OK") } },
+        )
+    }
+    if (renaming) RenameDialog(book.title, onDismiss = { renaming = false }, onRename = onRename)
     if (asking) {
         AlertDialog(
             onDismissRequest = { asking = false },
@@ -245,6 +292,27 @@ private fun BookRow(
             },
         )
     }
+}
+
+@Composable
+private fun RenameDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    onRename: (String) -> Unit,
+) {
+    var text by rememberSaveable { mutableStateOf(title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Rename book") },
+        text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Title") }) },
+        confirmButton = {
+            TextButton(onClick = {
+                onRename(text)
+                onDismiss()
+            }) { Text("Rename") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

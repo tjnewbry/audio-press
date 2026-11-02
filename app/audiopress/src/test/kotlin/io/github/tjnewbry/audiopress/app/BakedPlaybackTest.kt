@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class BakedPlaybackTest {
     private class FakeClipPlayer : ClipPlayer {
@@ -225,5 +226,58 @@ class BakedPlaybackTest {
 
         assertEquals(PlaybackMode.BAKED, switching.mode)
         assertEquals(PlayerState(PlaybackStatus.PAUSED, 3), switching.state) // no current word: baked audio has no word timing
+    }
+
+    @Test
+    fun `choosing live or baked changes the mode at once, paused at the same place`() {
+        val bakedPlayer = baked()
+        val modes = mutableListOf<PlaybackMode>()
+        val switching = SwitchingPlayback(live(), { bakedPlayer }, onModeChange = { modes += it })
+        switching.jumpTo(Position(1, 0))
+        switching.pause()
+
+        switching.preferLive = true
+        switching.refreshMode()
+        assertEquals(PlaybackMode.LIVE, switching.mode)
+        assertEquals(PlaybackStatus.PAUSED, switching.state.status)
+        assertEquals(1, switching.state.utterance)
+
+        switching.preferLive = false
+        switching.refreshMode()
+        assertEquals(listOf(PlaybackMode.LIVE, PlaybackMode.BAKED), modes)
+        assertEquals(PlaybackStatus.PAUSED, switching.state.status)
+    }
+
+    @Test
+    fun `a seek while paused does not start playback, in either mode`() {
+        val bakedPlayer = baked()
+        val switching = SwitchingPlayback(live(), { bakedPlayer })
+
+        switching.seekTo(Position(1, 0), 700, play = false)
+        assertEquals(PlaybackStatus.PAUSED, switching.state.status)
+        assertTrue(clipPlayer.started.isEmpty())
+
+        switching.preferLive = true
+        switching.seekTo(Position(2, 0), 0, play = false)
+        assertEquals(PlaybackMode.LIVE, switching.mode)
+        assertEquals(PlaybackStatus.PAUSED, switching.state.status)
+        assertTrue(output.spoken.isEmpty())
+    }
+
+    @Test
+    fun `a seek into the part still being baked can be read live, and back into baked audio`() {
+        val bakedPlayer = baked()
+        val switching = SwitchingPlayback(live(), { bakedPlayer })
+        assertEquals(PlaybackMode.BAKED, switching.mode)
+
+        switching.liveForNow = true
+        switching.seekTo(Position(2, 0), 0, play = true)
+        assertEquals(PlaybackMode.LIVE, switching.mode)
+        assertEquals(PlaybackStatus.PLAYING, switching.state.status)
+
+        switching.liveForNow = false
+        switching.seekTo(Position(1, 0), 250, play = true)
+        assertEquals(PlaybackMode.BAKED, switching.mode)
+        assertEquals("clip1.wav" to 250, clipPlayer.started.last().let { it.first to it.second })
     }
 }

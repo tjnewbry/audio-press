@@ -50,6 +50,12 @@ class SwitchingPlayback(
     /** When true the book is read with live speech even though baked audio exists; takes effect when playback next starts. */
     var preferLive: Boolean = false
 
+    /**
+     * True after a seek into a part of a book that is still being baked: that part is read with live speech, so playback
+     * stays live until a seek or jump lands in baked audio (or the book is fully baked).
+     */
+    var liveForNow: Boolean = false
+
     private val active: Playback get() = if (mode == PlaybackMode.BAKED) baked() ?: live else live
 
     val state: PlayerState get() = active.state
@@ -78,10 +84,13 @@ class SwitchingPlayback(
         active.seekTo(position, offsetMs, play)
     }
 
+    /** Switches to the mode that now applies (when the user chose live or baked, or a bake ended), pausing, at the same place. */
+    fun refreshMode() = chooseMode()
+
     fun pause() = active.pause()
 
     private fun chooseMode() {
-        val wanted = if (baked() != null && !preferLive) PlaybackMode.BAKED else PlaybackMode.LIVE
+        val wanted = if (baked() != null && !preferLive && !liveForNow) PlaybackMode.BAKED else PlaybackMode.LIVE
         if (wanted == mode) return
         val from = active
         val where = from.position

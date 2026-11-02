@@ -111,4 +111,21 @@ class BookStoreTest {
         assertEquals(null, store.loadProgress("no-such-book"))
         assertFailsWith<IllegalArgumentException> { store.saveProgress("../x", Position(1, 1)) }
     }
+
+    @Test
+    fun `renaming rewrites only the title, and the new title is listed`() {
+        val book = store.save("Old title", pageCount = 3, wordCount = 40, paragraphs = paragraphs)
+
+        assertTrue(store.rename(book.id, "A new title: with = signs and café"))
+
+        assertEquals(listOf(book.copy(title = "A new title: with = signs and café")), store.list())
+        assertEquals(paragraphs, store.load(book.id)) // nothing else changed
+        assertTrue(File(root, "${book.id}/book.properties.tmp").exists().not())
+    }
+
+    @Test
+    fun `renaming a book that is not there fails without creating anything`() {
+        assertTrue(!store.rename("missing", "Title"))
+        assertTrue(store.list().isEmpty())
+    }
 }

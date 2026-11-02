@@ -14,12 +14,16 @@ class MediaClipPlayer : ClipPlayer {
     private var player: MediaPlayer? = null
     private var startedFromMs = 0
 
+    // False from start() until the player is playing from the place asked for. Until then the position is that place, not the
+    // player's own (which is still 0 or the old place while it prepares and seeks), so a seek never shows a jump back.
+    private var settled = false
+
     override val positionMs: Int
         get() =
             try {
-                player?.currentPosition ?: startedFromMs
+                if (settled) player?.currentPosition ?: startedFromMs else startedFromMs
             } catch (e: IllegalStateException) {
-                startedFromMs // not prepared yet
+                startedFromMs
             }
 
     override fun start(
@@ -29,6 +33,7 @@ class MediaClipPlayer : ClipPlayer {
     ) {
         release()
         startedFromMs = fromMs
+        settled = false
         val next = MediaPlayer()
         player = next
         try {
@@ -41,8 +46,18 @@ class MediaClipPlayer : ClipPlayer {
             )
             next.setDataSource(file.path)
             next.setOnPreparedListener {
-                if (player === it) {
-                    if (fromMs > 0) it.seekTo(fromMs)
+                if (player !== it) return@setOnPreparedListener
+                if (fromMs > 0) {
+                    // To the exact millisecond, and only start (and report positions) once the seek is done.
+                    it.setOnSeekCompleteListener { done ->
+                        if (player === done) {
+                            settled = true
+                            done.start()
+                        }
+                    }
+                    it.seekTo(fromMs.toLong(), MediaPlayer.SEEK_CLOSEST)
+                } else {
+                    settled = true
                     it.start()
                 }
             }

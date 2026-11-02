@@ -95,6 +95,28 @@ class BookStore(
             null
         }
 
+    /**
+     * Gives book [id] the title [title] (already trimmed, not blank) by rewriting its properties file in place (through a
+     * temporary file, so it is never half-written). Returns false when the book is missing or the file cannot be written.
+     */
+    fun rename(
+        id: String,
+        title: String,
+    ): Boolean {
+        val folder = bookFolder(id)
+        val file = File(folder, METADATA_FILE)
+        return try {
+            val properties = Properties().apply { file.reader(Charsets.UTF_8).use { load(it) } }
+            properties.setProperty("title", title)
+            val temporary = File(folder, "$METADATA_FILE.tmp")
+            temporary.writer(Charsets.UTF_8).use { properties.store(it, null) }
+            Files.move(temporary.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            true
+        } catch (e: IOException) {
+            false
+        }
+    }
+
     /** The folder for book [id]'s baked audio. It may not exist yet. */
     fun audioFolder(id: String): File = File(bookFolder(id), "bake")
 

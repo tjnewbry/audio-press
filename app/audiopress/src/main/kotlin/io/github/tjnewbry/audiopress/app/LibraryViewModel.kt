@@ -180,6 +180,27 @@ class LibraryViewModel(
         }
     }
 
+    /** Renames [book] to [newTitle] (trimmed); a blank or unchanged title is ignored. The library list refreshes. */
+    fun rename(
+        book: Book,
+        newTitle: String,
+    ) {
+        val title = newTitle.trim()
+        if (title.isEmpty() || title == book.title) return
+        worker.execute {
+            if (!store.rename(book.id, title)) openError = "\"${book.title}\" could not be renamed."
+            refresh()
+        }
+    }
+
+    /**
+     * Export of a book's baked audio as one file. Not built yet: Eddie adds the merge of the baked clips later.
+     * TODO(Eddie): replace this with the real export (merge the baked clips of [book] into one audio file) and return null.
+     * Returns the message to show the user.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun exportBakedAudio(book: Book): String = "Export is coming soon."
+
     /** Pauses the open book, if any, so the position is saved. */
     fun pausePlayback() {
         reader?.pausePlayback()

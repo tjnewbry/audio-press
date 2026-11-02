@@ -140,15 +140,8 @@ fun PlayerBar(
                 modifier = Modifier.weight(1f),
             )
         }
-        val baked = session.mode == PlaybackMode.BAKED
-        val times = "${formatDuration(elapsed / MS_PER_SECOND)} / ${formatDuration(timeline.totalMs / MS_PER_SECOND)}"
         Text(
-            when {
-                session.player.waiting -> "Waiting for audio…"
-                session.listeningWhileBaking -> "Listening while baking"
-                baked -> "$times (baked audio)"
-                else -> "$times (estimated, live speech)"
-            },
+            playerStatusText(session.mode, session.bakeState, session.player.waiting, elapsed, timeline.totalMs),
             style = MaterialTheme.typography.labelLarge,
             modifier = Modifier.semantics { stateDescription = "tick $frame" },
         )
@@ -267,13 +260,13 @@ fun SeekBar(
         val corner = CornerRadius(thickness / 2)
         val scale = barScale(size.width.toInt(), INSET.toPx(), thickness)
         drawRoundRect(track, Offset(scale.left, top), Size(scale.right - scale.left, thickness), corner)
+        // The block boundaries are punched-out dots: over the track, under the buffer and the played fill.
+        val dot = thickness * DOT_SHARE
+        for (x in dotPositions(boundaries, scale, minGap = 4 * dot)) drawCircle(notch, dot, Offset(x, top + thickness / 2))
 
         // A full fill goes to the end of the track; otherwise the fills end where the same scale puts their share.
         fun fillTo(share: Float) = if (share >= 1f) scale.right else scale.x(share)
         if (buffer > 0f) drawRoundRect(BufferGrey, Offset(scale.left, top), Size(fillTo(buffer) - scale.left, thickness), corner)
-        // The block boundaries are punched-out dots: over the track and the buffer, under the played fill.
-        val dot = thickness * DOT_SHARE
-        for (x in dotPositions(boundaries, scale, minGap = 4 * dot)) drawCircle(notch, dot, Offset(x, top + thickness / 2))
         if (shown > 0f) drawRoundRect(fill, Offset(scale.left, top), Size(fillTo(shown) - scale.left, thickness), corner)
         drawCircle(fill, 8.dp.toPx(), Offset(scale.x(shown), top + thickness / 2))
         if (indicator != null) {
