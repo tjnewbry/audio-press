@@ -74,7 +74,7 @@ The following items I plan to fix, improve, and/or add to this project in the fu
 
 * [x] Milestone Alpha: text-based PDFs, lo output (version 0.1.0)
 * [x] Android app prototype that reads PDFs aloud, using the engine (awaiting checks on a real phone)
-* [ ] Android app: playback with the screen off, speed and voice settings, deleting books, and compressed baked audio
+* [ ] Android app: playback with the screen off, speed and live-voice settings, and compressed baked audio
 * [ ] Milestone Bravo: text-based PDFs, hi output
 * [ ] Milestone Charlie: image-scan PDFs, lo output (OCR)
 * [ ] Milestone Delta: image-scan PDFs, hi output
