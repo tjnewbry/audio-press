@@ -6,7 +6,10 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,19 +26,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -56,9 +60,16 @@ object PlaybackSpeed {
     private const val STEP_HUNDREDTHS = 5
     const val STEPS = 30
 
-    private const val MIN_HUNDREDTHS = 50
+    /** The number of different speeds: the steps from [MIN] to [MAX] without 0.95x and 1.05x. */
+    const val POSITIONS = STEPS + 1 - 2
 
-    /** [speed] on the nearest step, within [MIN] to [MAX]. */
+    /** The speeds that snap to 1x instead of being offered. */
+    private val SKIPPED = setOf(95, 105)
+
+    private const val MIN_HUNDREDTHS = 50
+    private const val DEFAULT_HUNDREDTHS = 100
+
+    /** [speed] on the nearest step, within [MIN] to [MAX]; 0.95x and 1.05x are left out and become 1x. */
     fun snap(speed: Float): Float = hundredths(speed) / HUNDRED
 
     /** The speed for a slider position: 0 at the bottom (0.5x) to 1 at the top (2x). */
@@ -89,7 +100,8 @@ object PlaybackSpeed {
 
     private fun hundredths(speed: Float): Int {
         val steps = ((speed * HUNDRED - MIN_HUNDREDTHS) / STEP_HUNDREDTHS).roundToInt().coerceIn(0, STEPS)
-        return MIN_HUNDREDTHS + steps * STEP_HUNDREDTHS
+        val value = MIN_HUNDREDTHS + steps * STEP_HUNDREDTHS
+        return if (value in SKIPPED) DEFAULT_HUNDREDTHS else value
     }
 
     private const val HUNDRED = 100f
@@ -109,16 +121,19 @@ fun SpeedControl(
     modifier: Modifier = Modifier,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val style = MaterialTheme.typography.headlineMedium
+    val style = MaterialTheme.typography.headlineMedium.copy(lineHeightStyle = CENTERED_LINE)
     Box(
         modifier
+            .heightIn(min = TOUCH_HEIGHT)
             .clickable { open = true }
             .semantics {
                 contentDescription = "Reading speed"
                 stateDescription = PlaybackSpeed.closedLabel(speed)
             }.padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(PlaybackSpeed.closedLabel(speed), style = style)
+        // The box is as wide as the widest label, "0.85x": an invisible copy sets the size, the real label sits at the right.
+        RightAlignedLabel(PlaybackSpeed.closedLabel(speed), "0.85x", style)
         if (open) {
             Popup(
                 alignment = Alignment.TopEnd,
@@ -131,29 +146,44 @@ fun SpeedControl(
     }
 }
 
+/**
+ * [label] drawn right-justified over an invisible [widest], which alone sets the size, so the box is as wide as the widest label
+ * without measuring anything. The invisible copy is hidden from screen readers.
+ */
+@Composable
+private fun RightAlignedLabel(
+    label: String,
+    widest: String,
+    style: TextStyle,
+) {
+    Box {
+        Text(widest, style = style, maxLines = 1, softWrap = false, modifier = Modifier.alpha(0f).clearAndSetSemantics {})
+        Text(label, style = style, maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.CenterEnd))
+    }
+}
+
+/** The bundled monospace font (Roboto Mono, only `0123456789.x`): a phone's own system font may not honour a monospace request. */
+private val SpeedMono = FontFamily(Font(R.font.speed_mono))
+
+private val TOUCH_HEIGHT = 48.dp
+
+/** Centres the text in its line, so the digits sit in the middle of the control and of a button beside it. */
+private val CENTERED_LINE = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None)
+
 @Composable
 private fun SpeedPanel(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
 ) {
-    val style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace, textAlign = TextAlign.End)
-    val measurer: TextMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    // As wide as the widest label, so the box never changes size while the number does.
-    val width =
-        with(density) {
-            measurer
-                .measure("0.00x", style)
-                .size.width
-                .toDp()
-        }
+    val style = MaterialTheme.typography.headlineMedium.copy(fontFamily = SpeedMono, lineHeightStyle = CENTERED_LINE)
     Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.End) {
-            Text(PlaybackSpeed.openLabel(speed), style = style, modifier = Modifier.width(width))
+        // In the monospace font every label is as wide as "0.85x", so the box never changes size while the number does.
+        Column(Modifier.width(IntrinsicSize.Min).padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.End) {
+            RightAlignedLabel(PlaybackSpeed.openLabel(speed), "0.85x", style)
             VerticalSlider(
                 fraction = PlaybackSpeed.toFraction(speed),
                 onFraction = { onSpeedChange(PlaybackSpeed.fromFraction(it)) },
-                modifier = Modifier.width(width).height(SLIDER_HEIGHT),
+                modifier = Modifier.fillMaxWidth().height(SLIDER_HEIGHT),
             )
         }
     }
@@ -173,6 +203,7 @@ private fun VerticalSlider(
     val update by rememberUpdatedState(onFraction)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val fill = MaterialTheme.colorScheme.primary
+    val mark = MaterialTheme.colorScheme.onSurfaceVariant
     Canvas(
         modifier
             .onSizeChanged { height = it.height.coerceAtLeast(1) }
@@ -190,6 +221,9 @@ private fun VerticalSlider(
         val trackWidth = 6.dp.toPx()
         val thumbY = radius + (size.height - 2 * radius) * (1f - fraction.coerceIn(0f, 1f))
         drawRoundRect(track, Offset(x - trackWidth / 2, radius), Size(trackWidth, size.height - 2 * radius), CornerRadius(trackWidth / 2))
+        // A thin dash across the track marks 1x, under the fill and the thumb.
+        val oneX = radius + (size.height - 2 * radius) * (1f - PlaybackSpeed.toFraction(PlaybackSpeed.DEFAULT))
+        drawLine(mark, Offset(x - 10.dp.toPx(), oneX), Offset(x + 10.dp.toPx(), oneX), strokeWidth = 2.dp.toPx())
         drawRoundRect(
             fill,
             Offset(x - trackWidth / 2, thumbY),

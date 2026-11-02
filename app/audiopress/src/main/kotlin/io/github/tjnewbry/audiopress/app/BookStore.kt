@@ -15,6 +15,16 @@ data class Book(
     val pageCount: Int,
     val wordCount: Int,
     val importedAt: Long,
+    /** Where the book came from; null for books imported before this was recorded. */
+    val source: BookSource? = null,
+)
+
+/** The PDF a book was imported from: its file name, its whole length, and the pages imported (the PDF's own numbers). */
+data class BookSource(
+    val fileName: String,
+    val totalPages: Int,
+    val firstPage: Int,
+    val lastPage: Int,
 )
 
 /** One paragraph or heading of a book's transcript, with the physical page its first word came from. */
@@ -43,8 +53,9 @@ class BookStore(
         pageCount: Int,
         wordCount: Int,
         paragraphs: List<StoredParagraph>,
+        source: BookSource? = null,
     ): Book {
-        val book = Book(newId(), title, pageCount, wordCount, clock())
+        val book = Book(newId(), title, pageCount, wordCount, clock(), source)
         val staging = File(root, book.id + TEMP_SUFFIX)
         try {
             staging.deleteRecursively()
@@ -142,6 +153,14 @@ class BookStore(
     /** Everything book [id] takes on the phone, in bytes: transcript, properties, progress, saved voice and baked clips. */
     fun footprintBytes(id: String): Long = folderSize(bookFolder(id))
 
+    /** What the baked audio and the saved bake voice of book [id] take, in bytes, or null when the book has neither. */
+    fun bakeBytes(id: String): Long? {
+        val audio = audioFolder(id)
+        val voice = voiceFile(id)
+        if (!audio.exists() && !voice.exists()) return null
+        return folderSize(audio) + (if (voice.isFile) voice.length() else 0L)
+    }
+
     /** The folder for book [id]'s baked audio. It may not exist yet. */
     fun audioFolder(id: String): File = File(bookFolder(id), "bake")
 
@@ -184,6 +203,12 @@ class BookStore(
                 setProperty("pageCount", book.pageCount.toString())
                 setProperty("wordCount", book.wordCount.toString())
                 setProperty("importedAt", book.importedAt.toString())
+                book.source?.let {
+                    setProperty("sourceFile", it.fileName)
+                    setProperty("sourcePages", it.totalPages.toString())
+                    setProperty("sourceFirst", it.firstPage.toString())
+                    setProperty("sourceLast", it.lastPage.toString())
+                }
             }
         file.writer(Charsets.UTF_8).use { properties.store(it, null) }
     }
@@ -200,9 +225,26 @@ class BookStore(
                 pageCount = properties.getProperty("pageCount")?.toInt() ?: return null,
                 wordCount = properties.getProperty("wordCount")?.toInt() ?: return null,
                 importedAt = properties.getProperty("importedAt")?.toLong() ?: return null,
+                source = readSource(properties),
             )
         } catch (e: IOException) {
             null
+        } catch (e: NumberFormatException) {
+            null
+        }
+
+    /** The recorded source, or null when it is missing or damaged; that never hides the book. */
+    private fun readSource(properties: Properties): BookSource? =
+        try {
+            val name = properties.getProperty("sourceFile")
+            val total = properties.getProperty("sourcePages")?.toInt()
+            val first = properties.getProperty("sourceFirst")?.toInt()
+            val last = properties.getProperty("sourceLast")?.toInt()
+            if (name == null || total == null || first == null || last == null || first < 1 || last < first || last > total) {
+                null
+            } else {
+                BookSource(name, total, first, last)
+            }
         } catch (e: NumberFormatException) {
             null
         }

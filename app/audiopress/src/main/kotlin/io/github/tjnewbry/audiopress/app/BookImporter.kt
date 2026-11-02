@@ -26,6 +26,7 @@ class BookImporter(
         source: TextSource,
         title: String,
         cancellation: CancellationToken? = null,
+        record: BookSource? = null,
         onProgress: (fraction: Float) -> Unit = {},
     ): Book {
         val pageCount = source.pageCount // read now: the source is closed before the conversion ends
@@ -38,7 +39,7 @@ class BookImporter(
                     onProgress(progress.fraction)
                 }.transcript
         if (transcript.wordCount == 0) throw EmptyBookException()
-        return store.save(title, pageCount, transcript.wordCount, transcript.toStoredParagraphs())
+        return store.save(title, pageCount, transcript.wordCount, transcript.toStoredParagraphs(), record)
     }
 }
 

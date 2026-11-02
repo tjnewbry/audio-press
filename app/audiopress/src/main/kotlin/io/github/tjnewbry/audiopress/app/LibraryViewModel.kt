@@ -156,8 +156,10 @@ class LibraryViewModel(
             val result =
                 try {
                     val pages = range?.takeUnless { it.first == 1 && it.last == chosen.totalPages }
+                    val shownRange = range ?: (1..chosen.totalPages)
+                    val record = BookSource(fileName, chosen.totalPages, shownRange.first, shownRange.last)
                     AndroidPdfTextSource.open(getApplication(), chosen.file, fileName, pages).use { source ->
-                        BookImporter(store).import(source, title, token) { fraction ->
+                        BookImporter(store).import(source, title, token, record = record) { fraction ->
                             // Called on this worker thread; Compose state may be written from any thread.
                             (importState as? ImportState.Working)?.let { importState = it.copy(progress = fraction) }
                         }
@@ -272,6 +274,21 @@ class LibraryViewModel(
     ) {
         val exports = (getApplication<Application>() as AudioPressApp).exportCenter
         exports.start(book, store.audioFolder(book.id), { store.footprintBytes(book.id) }, target)
+    }
+
+    /** The Info popup being shown (its lines), or null. The sizes are worked out on the worker thread when it is asked for. */
+    var info: List<String>? by mutableStateOf(null)
+        private set
+
+    fun showInfo(book: Book) {
+        worker.execute {
+            val sizes = BookSizes(store.bakeBytes(book.id), store.footprintBytes(book.id))
+            info = bookInfoLines(book, sizes)
+        }
+    }
+
+    fun dismissInfo() {
+        info = null
     }
 
     /** Pauses the open book, if any, so the position is saved. */

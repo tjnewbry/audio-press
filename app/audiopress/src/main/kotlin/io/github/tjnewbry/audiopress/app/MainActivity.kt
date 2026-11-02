@@ -200,6 +200,13 @@ private fun LibraryScreen(
             }
         }
         library.openError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        library.info?.let { lines ->
+            AlertDialog(
+                onDismissRequest = library::dismissInfo,
+                text = { Column { lines.forEach { Text(it) } } },
+                confirmButton = { TextButton(onClick = library::dismissInfo) { Text("OK") } },
+            )
+        }
         Box(Modifier.weight(1f)) {
             when {
                 !library.loaded -> {
@@ -224,6 +231,7 @@ private fun LibraryScreen(
                                 baked = book.id in library.bakedBooks,
                                 onDelete = { everything -> library.delete(book, everything) },
                                 onRename = { title -> library.rename(book, title) },
+                                onInfo = { library.showInfo(book) },
                                 onExport = {
                                     exportingId = book.id
                                     savePicker.launch(suggestedExportName(book.title))
@@ -245,6 +253,7 @@ private fun BookRow(
     baked: Boolean,
     onDelete: (everything: Boolean) -> Unit,
     onRename: (String) -> Unit,
+    onInfo: () -> Unit,
     onExport: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -279,6 +288,10 @@ private fun BookRow(
                     DropdownMenuItem(text = { Text("Rename") }, onClick = {
                         menuOpen = false
                         renaming = true
+                    })
+                    DropdownMenuItem(text = { Text("Info") }, onClick = {
+                        menuOpen = false
+                        onInfo()
                     })
                     DropdownMenuItem(text = { Text("Deletion") }, onClick = {
                         menuOpen = false

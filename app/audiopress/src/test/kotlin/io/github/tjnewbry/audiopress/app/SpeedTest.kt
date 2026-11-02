@@ -19,7 +19,10 @@ class SpeedTest {
         assertEquals("1.15x", PlaybackSpeed.closedLabel(1.15f))
         assertEquals("0.5x", PlaybackSpeed.closedLabel(0.5f))
         assertEquals("2x", PlaybackSpeed.closedLabel(2.0f))
-        assertEquals("0.95x", PlaybackSpeed.closedLabel(0.95f))
+        assertEquals("1x", PlaybackSpeed.closedLabel(0.95f)) // 0.95x and 1.05x are not offered
+        assertEquals("1x", PlaybackSpeed.closedLabel(1.05f))
+        assertEquals("0.9x", PlaybackSpeed.closedLabel(0.9f))
+        assertEquals("1.1x", PlaybackSpeed.closedLabel(1.1f))
     }
 
     @Test
@@ -37,7 +40,15 @@ class SpeedTest {
         assertEquals(0.5f, PlaybackSpeed.fromFraction(0f))
         assertEquals(2.0f, PlaybackSpeed.fromFraction(1f))
         assertEquals(1.25f, PlaybackSpeed.fromFraction(0.5f))
-        assertEquals(31, (0..PlaybackSpeed.STEPS).map { PlaybackSpeed.fromFraction(it / PlaybackSpeed.STEPS.toFloat()) }.distinct().size)
+        assertEquals(29, PlaybackSpeed.POSITIONS)
+        assertEquals(29, (0..1000).map { PlaybackSpeed.fromFraction(it / 1000f) }.distinct().size)
+        val all = (0..1000).map { PlaybackSpeed.fromFraction(it / 1000f) }.toSet()
+        assertTrue(0.95f !in all && 1.05f !in all)
+        assertEquals(1.0f, PlaybackSpeed.snap(0.95f))
+        assertEquals(1.0f, PlaybackSpeed.snap(1.05f))
+        assertEquals(0.9f, PlaybackSpeed.snap(0.9f))
+        assertEquals(1.1f, PlaybackSpeed.snap(1.1f))
+        assertEquals(1f / 3, PlaybackSpeed.toFraction(1.0f), 1e-6f) // the 1x dash is a third of the way up
         // Every position lands on a step, whatever the finger does.
         for (i in 0..1000) {
             val speed = PlaybackSpeed.fromFraction(i / 1000f)
@@ -87,6 +98,10 @@ class SpeedTest {
         assertEquals(1.0f, store.loadSpeed(book.id))
         file.writeText("7.3")
         assertEquals(2.0f, store.loadSpeed(book.id))
+        file.writeText("0.95")
+        assertEquals(1.0f, store.loadSpeed(book.id))
+        file.writeText("1.05")
+        assertEquals(1.0f, store.loadSpeed(book.id))
     }
 
     // The speed does not change the book's timeline.
