@@ -33,8 +33,9 @@ class ExportTest {
         assertEquals(
             "Export successful!\n\n" +
                 "The exported audio file is 21.4 MB.\n\n" +
-                "The book in Audio Press still takes up an extra 1.82 GB. " +
-                "Consider deleting the imported book, or at least its bake data, to save space.",
+                "The book in Audio Press still takes up 1.82 GB.\n\n" +
+                "You can use the player in Audio Press to follow along with the text, " +
+                "but if that is not important to you then consider deleting the bake data to save space.",
             exportSuccessText(21_400_000, 1_823_000_000),
         )
     }
