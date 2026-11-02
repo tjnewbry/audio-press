@@ -122,3 +122,21 @@ data class KokoroModelFiles(
 
 /** The bytes still to download for [quality] as the whole decimal megabytes the button shows (121, 206, 354 at first). */
 fun KokoroService.downloadSizeMegabytes(quality: KokoroQuality): Int = downloadSizeBytes(quality).toDecimalMegabytes()
+
+/**
+ * The service the app uses: model files kept in [root] (give it `File(context.noBackupFilesDir, "kokoro")`),
+ * downloaded from [GithubKokoroCatalog], and run with ONNX Runtime on [threads] threads (2 is the fastest on the
+ * phone tested).
+ */
+fun kokoroService(
+    root: java.io.File,
+    threads: Int = OnnxKokoroEngine.DEFAULT_THREADS,
+): KokoroService {
+    val store = KokoroModelStore(root, GithubKokoroCatalog)
+    return DefaultKokoroService(store) { files, voice, speed ->
+        val frontEnd =
+            io.github.tjnewbry.audiopress.bake.kokoro.text
+                .KokoroFrontEnd(store)
+        KokoroSpeechSynthesizer(OnnxKokoroEngine(files, KokoroVocab.default(), frontEnd, threads), voice, speed)
+    }
+}

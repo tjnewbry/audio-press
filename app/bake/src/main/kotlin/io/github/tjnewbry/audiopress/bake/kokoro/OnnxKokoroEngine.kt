@@ -94,7 +94,11 @@ class OnnxKokoroEngine(
             try {
                 options.close()
             } finally {
-                voices.close()
+                try {
+                    voices.close()
+                } finally {
+                    (phonemizer as? AutoCloseable)?.close()
+                }
             }
         }
     }

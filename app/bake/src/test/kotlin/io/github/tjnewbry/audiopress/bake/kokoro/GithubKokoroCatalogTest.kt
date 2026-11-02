@@ -33,9 +33,30 @@ class GithubKokoroCatalogTest {
     }
 
     @Test
-    fun `the download button shows decimal megabytes, 121 206 and 354`() {
-        assertEquals(listOf(120_575_669L, 205_679_185L, 353_746_785L), KokoroQuality.entries.map { catalog.totalBytes(it) })
-        assertEquals(listOf(121, 206, 354), KokoroQuality.entries.map { catalog.totalBytes(it).toDecimalMegabytes() })
+    fun `the front-end files are pinned too, four misaki dictionaries and the unknown-word model, 16 MB in all`() {
+        assertEquals(
+            listOf("us_gold.json", "us_silver.json", "gb_gold.json", "gb_silver.json", "misaki-en_us-g2p.onnx"),
+            catalog.frontEnd.map { it.fileName },
+        )
+        assertEquals(16_040_680L, catalog.frontEnd.sumOf { it.sizeBytes })
+        assertTrue(
+            catalog.frontEnd.take(4).all {
+                it.url.startsWith("https://raw.githubusercontent.com/hexgrad/misaki/fba1236595f2d2bf21d414ba6e57d25256afada3/")
+            },
+        )
+        assertTrue(
+            catalog.frontEnd
+                .last()
+                .url
+                .contains("4b3a605d2f605318ab4f762ab9855c44106528b7"),
+        )
+        assertTrue(catalog.frontEnd.all { Regex("[0-9a-f]{64}").matches(it.sha256) })
+    }
+
+    @Test
+    fun `the download button shows decimal megabytes, 137 222 and 370`() {
+        assertEquals(listOf(136_616_349L, 221_719_865L, 369_787_465L), KokoroQuality.entries.map { catalog.totalBytes(it) })
+        assertEquals(listOf(137, 222, 370), KokoroQuality.entries.map { catalog.totalBytes(it).toDecimalMegabytes() })
         assertEquals(0, 0L.toDecimalMegabytes())
         assertEquals(1, 500_000L.toDecimalMegabytes())
         assertEquals(0, 499_999L.toDecimalMegabytes())
@@ -45,6 +66,6 @@ class GithubKokoroCatalogTest {
     fun `the fake service reports the same sizes as the real catalog`() {
         val fake = FakeKokoroService(downloadMillis = 0, steps = 1)
 
-        assertEquals(listOf(121, 206, 354), KokoroQuality.entries.map { fake.downloadSizeMegabytes(it) })
+        assertEquals(listOf(137, 222, 370), KokoroQuality.entries.map { fake.downloadSizeMegabytes(it) })
     }
 }

@@ -27,6 +27,12 @@ interface KokoroCatalog {
 
     /** `voices-v1.0.bin`, shared by every quality. */
     val voices: KokoroFileSpec
+
+    /**
+     * The files the English front end needs, shared by every quality: misaki's pronunciation dictionaries and the
+     * small model for unknown words. They download with the model, so a voice always has what it needs to read text.
+     */
+    val frontEnd: List<KokoroFileSpec> get() = emptyList()
 }
 
 /** Why a download failed. Each has a message fit to show the user. */
@@ -119,6 +125,13 @@ class KokoroModelStore(
     /** `voices-v1.0.bin`, or null if it is not downloaded. */
     fun voicesFile(): File? = File(root, catalog.voices.fileName).takeIf { isComplete(catalog.voices) }
 
+    /** The downloaded front-end file called [fileName] (a dictionary or the unknown-word model), or null. */
+    fun frontEndFile(fileName: String): File? =
+        catalog.frontEnd
+            .firstOrNull { it.fileName == fileName }
+            ?.takeIf { isComplete(it) }
+            ?.let { File(root, it.fileName) }
+
     /**
      * Downloads what [quality] still needs, blocking until done. Call it off the main thread.
      *
@@ -158,7 +171,7 @@ class KokoroModelStore(
         root.listFiles { f -> f.name.endsWith(PART) }?.forEach { it.delete() }
     }
 
-    private fun specsFor(quality: KokoroQuality): List<KokoroFileSpec> = listOf(catalog.model(quality), catalog.voices)
+    private fun specsFor(quality: KokoroQuality): List<KokoroFileSpec> = listOf(catalog.model(quality), catalog.voices) + catalog.frontEnd
 
     private fun isComplete(spec: KokoroFileSpec): Boolean = File(root, spec.fileName).let { it.isFile && it.length() == spec.sizeBytes }
 

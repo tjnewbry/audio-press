@@ -83,6 +83,14 @@ class MisakiEnglishPhonemizer(
     ): String {
         val w = items[i].token.text
         val tag = guessTag(items, i)
+        // "Mr." and "Dr." are dictionary entries with the period, as misaki's tokenizer keeps them as one word.
+        val period = items.getOrNull(i + 1)?.takeIf { items[i].space.isEmpty() && it.token.type == TokenType.PUNCT && it.token.text == "." }
+        if (period != null) {
+            lexicon.phonemize("$w.", tag, ctx)?.let {
+                period.phonemes = ""
+                return it
+            }
+        }
         lexicon.phonemize(w, tag, ctx)?.let { return it }
         val parts = w.split('-', Char(0x2010), '_').filter { it.isNotEmpty() }
         if (parts.size > 1) return compound(parts, lexicon, fallback, accent, ctx)
@@ -159,6 +167,7 @@ class MisakiEnglishPhonemizer(
                 ?.lowercase()
         return when {
             w == "I" -> "PRP"
+            w.lowercase() == "in" -> "IN"
             w == "a" -> "DT"
             w.lowercase() == "used" && next == "to" -> "VBD"
             w[0].isUpperCase() && !w.all { it.isUpperCase() } && !startsSentence(items, i) -> "NNP"

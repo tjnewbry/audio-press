@@ -28,6 +28,13 @@ class KokoroVocab(
         /** The id the model uses for padding, placed before and after the phonemes. */
         const val PAD_ID = 0
 
+        /** The vocabulary of Kokoro v1.0, from its `config.json` (Apache-2.0, hexgrad/Kokoro-82M) bundled with this module. */
+        fun default(): KokoroVocab {
+            val stream =
+                KokoroVocab::class.java.getResourceAsStream("config.json") ?: throw IOException("the bundled Kokoro config.json is missing")
+            return fromConfigJson(stream.use { it.readBytes().toString(Charsets.UTF_8) })
+        }
+
         /** Reads the `vocab` object of a Kokoro `config.json`. */
         fun fromConfigJson(json: String): KokoroVocab {
             val root = MiniJson(json).parseValue() as? Map<*, *> ?: throw IOException("config.json is not an object")
