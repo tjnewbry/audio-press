@@ -383,7 +383,7 @@ private fun ReaderScreen(
                 SpeechStatus(session)
                 BakeSection(session)
             }
-            SpeedControl(session.speed, session::changeSpeed)
+            SpeedControl(session.speed, session::changeSpeed, session::finishSpeedChange)
         }
         Captions(
             session,
@@ -476,15 +476,14 @@ private fun Captions(
 
 private val lineKey: (Int, Utterance) -> Any = { index, _ -> index }
 
-/** The messages about the speech engine that used to sit under the Speak button. */
+/**
+ * The message shown when the speech engine cannot be used. Nothing shows while it starts (a fraction of a second on a normal
+ * open), so the screen does not change height as it opens.
+ */
 @Composable
 private fun SpeechStatus(session: ReaderSession) {
     when (val speech = session.speech) {
-        SpeechState.Starting -> {
-            Text("Starting text-to-speech...")
-        }
-
-        SpeechState.Ready -> {
+        SpeechState.Starting, SpeechState.Ready -> {
             // Nothing to show.
         }
 

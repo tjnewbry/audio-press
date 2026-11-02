@@ -127,7 +127,8 @@ fun PlayerBar(
     var dragShare by remember { mutableStateOf<Float?>(null) } // where the finger is while the bar is being dragged
     val elapsed = dragShare?.let { (it * timeline.totalMs).toLong() } ?: session.elapsedMs() // the text follows the finger
     val indicator = if (follow.showArrow) scrollIndicator(listState, session, timeline) else null
-    val enabled = session.speech == SpeechState.Ready || session.bakeState is BakeState.Baked
+    // Enabled while the speech engine starts too (a play tapped then waits for it), so the button does not change on opening.
+    val enabled = session.speech !is SpeechState.Unavailable || session.bakeState is BakeState.Baked
     Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PlayPauseButton(playing = session.player.status == PlaybackStatus.PLAYING, enabled = enabled, onClick = session::togglePlayback)

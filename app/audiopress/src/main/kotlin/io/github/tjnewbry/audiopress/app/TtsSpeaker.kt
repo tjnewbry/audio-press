@@ -13,7 +13,8 @@ import java.util.Locale
  * [SpeechOutput] backed by Android's `TextToSpeech`. Speech engine callbacks arrive on a binder thread;
  * they are passed on through the main thread, where the rest of the app runs.
  *
- * [onReady] is called once, with null when speech works or with a message for the user when it cannot.
+ * [onReady] is called once, with null when speech works or with a message for the user when it cannot. An utterance asked
+ * for before then waits and is spoken once the engine is ready, or reported to [onUtteranceError] if it cannot be.
  */
 class TtsSpeaker(
     context: Context,
@@ -27,13 +28,23 @@ class TtsSpeaker(
     private val tts: TextToSpeech
     private var rate = 1f
 
+    // Main-thread state: whether the engine has started, and the utterance (text and id) asked for before it had.
+    private var started = false
+    private var waiting: Pair<String, String>? = null
+
     init {
         tts =
             TextToSpeech(context.applicationContext) { status ->
                 val problem = describeInit(status)
                 tts.setSpeechRate(rate)
                 Log.i(TAG, "TextToSpeech init status=$status problem=$problem")
-                main.post { onReady(problem) }
+                main.post {
+                    started = true
+                    onReady(problem)
+                    val (text, id) = waiting ?: return@post
+                    waiting = null
+                    if (problem == null) speak(text, id) else onUtteranceError(id)
+                }
             }
         tts.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
@@ -74,11 +85,16 @@ class TtsSpeaker(
         text: String,
         utteranceId: String,
     ) {
+        if (!started) {
+            waiting = text to utteranceId
+            return
+        }
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, Bundle.EMPTY, utteranceId)
     }
 
     override fun stop() {
-        tts.stop()
+        waiting = null
+        if (started) tts.stop()
     }
 
     override fun setRate(rate: Float) {

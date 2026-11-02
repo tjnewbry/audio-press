@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -32,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -39,6 +41,8 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -110,17 +114,19 @@ object PlaybackSpeed {
 
 /**
  * The speed control: closed, a large label of the speed; tapped, a popup over it with the speed in two decimals (monospace,
- * in a box as wide as `0.00x`, so nothing moves while sliding) and a vertical slider, top 2.00x and bottom 0.50x. It stays
- * open until a tap outside it.
+ * in a box as wide as `0.85x`, so nothing moves while sliding) and a vertical slider, top 2.00x and bottom 0.50x. It stays
+ * open until a tap outside it. [onSpeedChange] is called at every step while the slider moves, and [onSpeedChangeFinished]
+ * when the finger lifts (or after a tap on the slider).
  */
 @Composable
 fun SpeedControl(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
+    onSpeedChangeFinished: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
-    val style = MaterialTheme.typography.headlineMedium.copy(lineHeightStyle = CENTERED_LINE)
+    val style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = TABULAR_FIGURES, lineHeightStyle = CENTERED_LINE)
     Box(
         modifier
             .heightIn(min = TOUCH_HEIGHT)
@@ -128,36 +134,62 @@ fun SpeedControl(
             .semantics {
                 contentDescription = "Reading speed"
                 stateDescription = PlaybackSpeed.closedLabel(speed)
-            }.padding(horizontal = 8.dp, vertical = 4.dp),
+            }.padding(horizontal = LABEL_PADDING_X, vertical = LABEL_PADDING_Y),
         contentAlignment = Alignment.Center,
     ) {
-        // The box is as wide as the widest label, "0.85x": an invisible copy sets the size, the real label sits at the right.
-        RightAlignedLabel(PlaybackSpeed.closedLabel(speed), "0.85x", style)
-        if (open) {
-            Popup(
-                alignment = Alignment.TopEnd,
-                onDismissRequest = { open = false },
-                properties = PopupProperties(focusable = true),
-            ) {
-                SpeedPanel(speed, onSpeedChange)
+        Box {
+            // The closed number is not drawn while the panel is open; its box keeps its place, so nothing beside it moves.
+            RightAlignedLabel(PlaybackSpeed.closedLabel(speed), style, visible = !open)
+            if (open) {
+                // Anchored to the closed number's box and moved out by the panel's padding, so the open number sits exactly
+                // where the closed one was and the panel covers its whole footprint.
+                val offset = with(LocalDensity.current) { IntOffset(LABEL_PADDING_X.roundToPx(), -LABEL_PADDING_Y.roundToPx()) }
+                Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = offset,
+                    onDismissRequest = { open = false },
+                    properties = PopupProperties(focusable = true),
+                ) {
+                    SpeedPanel(speed, onSpeedChange, onSpeedChangeFinished)
+                }
             }
         }
     }
 }
 
+/** The space around the speed label, closed and open alike. */
+private val LABEL_PADDING_X = 8.dp
+private val LABEL_PADDING_Y = 4.dp
+
+/** The label that sets the width of the speed boxes, closed and open: the widest label on the phones checked. */
+private const val WIDEST_LABEL = "0.85x"
+
 /**
- * [label] drawn right-justified over an invisible [widest], which alone sets the size, so the box is as wide as the widest label
- * without measuring anything. The invisible copy is hidden from screen readers.
+ * [label] right-justified in a box exactly as wide as an invisible [WIDEST_LABEL], which alone sets the size, so the box never
+ * changes size or moves whatever the label says. The label takes no part in the size: in a font where it is wider than
+ * [WIDEST_LABEL] it spills out to the left on one line, its right edge staying on the box's right edge. The invisible copy is
+ * hidden from screen readers. When not [visible] the label is not drawn but the box keeps its size.
  */
 @Composable
 private fun RightAlignedLabel(
     label: String,
-    widest: String,
     style: TextStyle,
+    visible: Boolean = true,
 ) {
     Box {
-        Text(widest, style = style, maxLines = 1, softWrap = false, modifier = Modifier.alpha(0f).clearAndSetSemantics {})
-        Text(label, style = style, maxLines = 1, softWrap = false, modifier = Modifier.align(Alignment.CenterEnd))
+        Text(WIDEST_LABEL, style = style, maxLines = 1, softWrap = false, modifier = Modifier.alpha(0f).clearAndSetSemantics {})
+        Text(
+            label,
+            style = style,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Visible,
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .wrapContentWidth(Alignment.End, unbounded = true)
+                    .alpha(if (visible) 1f else 0f),
+        )
     }
 }
 
@@ -166,20 +198,35 @@ private val TOUCH_HEIGHT = 48.dp
 /** Centres the text in its line, so the digits sit in the middle of the control and of a button beside it. */
 private val CENTERED_LINE = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None)
 
+/**
+ * Tabular figures: every digit as wide as every other, in fonts that have them, so the number does not shift sideways as it
+ * changes even where the phone's font theme ignores the request for a monospace font.
+ */
+private const val TABULAR_FIGURES = "tnum"
+
 @Composable
 private fun SpeedPanel(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
+    onSpeedChangeFinished: () -> Unit,
 ) {
-    val style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace, lineHeightStyle = CENTERED_LINE)
+    val style =
+        MaterialTheme.typography.headlineMedium.copy(
+            fontFamily = FontFamily.Monospace,
+            fontFeatureSettings = TABULAR_FIGURES,
+            lineHeightStyle = CENTERED_LINE,
+        )
     Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
-        // In a monospace font every label is as wide as "0.85x", so the box never changes size while the number does. (A phone
-        // that does not honour the system monospace font falls back to its own font, where "0.85x" is still the widest label.)
-        Column(Modifier.width(IntrinsicSize.Min).padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.End) {
-            RightAlignedLabel(PlaybackSpeed.openLabel(speed), "0.85x", style)
+        // The label box alone sets the width (the slider has none of its own), so the popup keeps one size and one place.
+        Column(
+            Modifier.width(IntrinsicSize.Min).padding(horizontal = LABEL_PADDING_X, vertical = LABEL_PADDING_Y),
+            horizontalAlignment = Alignment.End,
+        ) {
+            RightAlignedLabel(PlaybackSpeed.openLabel(speed), style)
             VerticalSlider(
                 fraction = PlaybackSpeed.toFraction(speed),
                 onFraction = { onSpeedChange(PlaybackSpeed.fromFraction(it)) },
+                onRelease = onSpeedChangeFinished,
                 modifier = Modifier.fillMaxWidth().height(SLIDER_HEIGHT),
             )
         }
@@ -189,15 +236,20 @@ private fun SpeedPanel(
 private val SLIDER_HEIGHT = 180.dp
 private val THUMB_RADIUS = 11.dp
 
-/** A slider that goes up and down: [fraction] is 0 at the bottom and 1 at the top. Tapping or dragging calls [onFraction]. */
+/**
+ * A slider that goes up and down: [fraction] is 0 at the bottom and 1 at the top. Tapping or dragging calls [onFraction];
+ * [onRelease] follows when the finger lifts.
+ */
 @Composable
 private fun VerticalSlider(
     fraction: Float,
     onFraction: (Float) -> Unit,
+    onRelease: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var height by remember { mutableIntStateOf(1) }
     val update by rememberUpdatedState(onFraction)
+    val release by rememberUpdatedState(onRelease)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val fill = MaterialTheme.colorScheme.primary
     val mark = MaterialTheme.colorScheme.onSurfaceVariant
@@ -205,9 +257,12 @@ private fun VerticalSlider(
         modifier
             .onSizeChanged { height = it.height.coerceAtLeast(1) }
             .pointerInput(Unit) {
-                detectTapGestures { update(fractionAt(it.y, height, THUMB_RADIUS.toPx())) }
+                detectTapGestures {
+                    update(fractionAt(it.y, height, THUMB_RADIUS.toPx()))
+                    release()
+                }
             }.pointerInput(Unit) {
-                detectDragGestures { change, _ ->
+                detectDragGestures(onDragEnd = { release() }, onDragCancel = { release() }) { change, _ ->
                     change.consume()
                     update(fractionAt(change.position.y, height, THUMB_RADIUS.toPx()))
                 }

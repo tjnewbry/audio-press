@@ -61,6 +61,10 @@ class ReaderSession(
     var speed: Float by mutableFloatStateOf(PlaybackSpeed.snap(initialSpeed))
         private set
 
+    /** The speed live speech is speaking at, and the speed last saved; both catch up with [speed] in [finishSpeedChange]. */
+    private var liveSpeed = speed
+    private var savedSpeed = speed
+
     private var livePlayer: ReaderPlayer? = null
     private var bakedPlayer: BakedPlayer? = null
     private var switcher: SwitchingPlayback? = null
@@ -88,8 +92,8 @@ class ReaderSession(
                 },
             )
         livePlayer = live
-        live.setSpeed(initialSpeed)
-        clipPlayer.setSpeed(initialSpeed)
+        live.setSpeed(speed)
+        clipPlayer.setSpeed(speed)
         bakedPlayer = if (bake.clips != null) createBakedPlayer(initialPosition) else null
         // Baked audio can be played once the book is baked, or while it is being baked (the clips made so far).
         val switching =
@@ -154,7 +158,7 @@ class ReaderSession(
         val utterance = utterances.getOrNull(player.utterance) ?: return 0L
         val wordsBefore = utterance.words.count { it.first < player.wordStart }
         // The speech engine reports each word as it starts, so between reports the position advances at the estimated speed.
-        val since = if (player.status == PlaybackStatus.PLAYING) ((SystemClock.uptimeMillis() - wordChangedAt) * speed).toLong() else 0L
+        val since = if (player.status == PlaybackStatus.PLAYING) ((SystemClock.uptimeMillis() - wordChangedAt) * liveSpeed).toLong() else 0L
         return timeline.elapsedMs(player.utterance, wordsBefore, since, rangesReported)
     }
 
@@ -174,14 +178,28 @@ class ReaderSession(
 
     fun totalMs(): Long = timeline().totalMs
 
-    /** Sets the reading speed, at once (also while playing), for live speech and baked audio, and remembers it for this book. */
+    /**
+     * Sets the reading speed while the speed slider moves. Baked audio follows at once, also while playing. Live speech has to
+     * start its sentence again to change speed, so it, and saving the speed, wait for [finishSpeedChange].
+     */
     fun changeSpeed(next: Float) {
         val snapped = PlaybackSpeed.snap(next)
         if (snapped == speed) return
         speed = snapped
-        livePlayer?.setSpeed(snapped)
         clipPlayer.setSpeed(snapped)
-        if (!saver.isShutdown) saver.execute { runCatching { saveSpeed(snapped) } }
+    }
+
+    /** The finger left the speed slider: live speech carries on at the chosen speed, which is remembered for this book. */
+    fun finishSpeedChange() {
+        val chosen = speed
+        if (chosen != liveSpeed) {
+            liveSpeed = chosen
+            livePlayer?.setSpeed(chosen)
+        }
+        if (chosen != savedSpeed) {
+            savedSpeed = chosen
+            if (!saver.isShutdown) saver.execute { runCatching { saveSpeed(chosen) } }
+        }
     }
 
     /** Moves playback to [share] (0 to 1) of the book's time; keeps playing if it was playing, else waits there. */
