@@ -7,7 +7,9 @@ A Kotlin program that turns a PDF (usually a novel or textbook) into a clean tra
 
 Version 0.1.0 completes **Milestone Alpha** (text-based PDFs, lo output).
 
-[Software Demo Video](https://www.youtube.com/watch?v=v48KNSDY9Ic) (the engine's command-line program)
+[Software Demo Video](https://www.youtube.com/watch?v=XiTV0JSx9-8) (android app)
+
+[Engine Demo Video](https://www.youtube.com/watch?v=v48KNSDY9Ic) (the engine's command-line program)
 
 ## Repository layout
 
