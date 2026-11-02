@@ -31,6 +31,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -44,17 +46,38 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-private const val TICK_MS = 500L
+private const val TICK_MS = 150L
 
 /** Space kept free at each end of the seeker bar for the round marker. */
 private val INSET = 8.dp
 
-/** The share of the bar (0 to 1) that a touch at [x] pixels is at, for a bar [width] pixels wide with [inset] pixels free at each end. */
-internal fun shareAt(
-    x: Float,
+/** How thick the track is; its end caps are half of that in radius. */
+private val THICKNESS = 8.dp
+
+/**
+ * Maps shares of the book (0 to 1) to places on the bar and back, for one scale shared by the played fill, the thumb, the
+ * buffer, the scroll arrow and touches. The track runs from [left] to [right]; the start of the book is one end-cap radius
+ * ([cap]) in from the left end and the end of the book one cap radius in from the right end, so nothing rides over a cap.
+ */
+internal class BarScale(
+    val left: Float,
+    val right: Float,
+    val cap: Float,
+) {
+    private val start get() = left + cap
+    private val length get() = (right - cap - start).coerceAtLeast(1f)
+
+    fun x(share: Float): Float = start + length * share.coerceIn(0f, 1f)
+
+    fun share(x: Float): Float = ((x - start) / length).coerceIn(0f, 1f)
+}
+
+/** The scale of a bar [width] pixels wide with [inset] pixels free at each end and a track [thickness] pixels thick. */
+internal fun barScale(
     width: Int,
     inset: Float,
-): Float = ((x - inset) / (width - 2 * inset).coerceAtLeast(1f)).coerceIn(0f, 1f)
+    thickness: Float,
+): BarScale = BarScale(inset, width - inset, thickness / 2)
 
 /** The grey of the buffer bar, the baked share of the book. */
 private val BufferGrey = Color(0xFF9E9E9E)
@@ -71,14 +94,15 @@ fun PlayerBar(
     onSeek: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Baked audio moves between words, so redraw twice a second while it plays.
+    // The position moves all the time while playing (inside a clip, or between the words live speech reports), so redraw often.
     var tick by remember { mutableLongStateOf(0L) }
     LaunchedEffect(session.player.status, session.mode) {
-        while (session.player.status == PlaybackStatus.PLAYING && session.mode == PlaybackMode.BAKED) {
+        while (session.player.status == PlaybackStatus.PLAYING) {
             tick = SystemClock.uptimeMillis()
             delay(TICK_MS)
         }
     }
+    val frame = tick // read here, so every tick redraws the bar
     val timeline = session.timeline()
     val elapsed = session.elapsedMs()
     val indicator = if (follow.showArrow) scrollIndicator(listState, session, timeline) else null
@@ -105,7 +129,7 @@ fun PlayerBar(
                 else -> "$times (estimated, live speech)"
             },
             style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.semantics { stateDescription = "tick $tick" },
+            modifier = Modifier.semantics { stateDescription = "tick $frame" },
         )
     }
 }
@@ -187,7 +211,6 @@ fun SeekBar(
     val seek by rememberUpdatedState(onSeek)
     val track = MaterialTheme.colorScheme.surfaceVariant
     val fill = MaterialTheme.colorScheme.primary
-    val arrow = MaterialTheme.colorScheme.tertiary
     val shown = dragging ?: played
     Canvas(
         modifier
@@ -195,16 +218,16 @@ fun SeekBar(
             .height(40.dp)
             .onSizeChanged { width = it.width.coerceAtLeast(1) }
             .pointerInput(Unit) {
-                detectTapGestures { seek(shareAt(it.x, width, INSET.toPx()).toDouble()) }
+                detectTapGestures { seek(barScale(width, INSET.toPx(), THICKNESS.toPx()).share(it.x).toDouble()) }
             }.pointerInput(Unit) {
                 detectHorizontalDragGestures(
-                    onDragStart = { dragging = shareAt(it.x, width, INSET.toPx()) },
+                    onDragStart = { dragging = barScale(width, INSET.toPx(), THICKNESS.toPx()).share(it.x) },
                     onDragEnd = {
                         dragging?.let { share -> seek(share.toDouble()) }
                         dragging = null
                     },
                     onDragCancel = { dragging = null },
-                    onHorizontalDrag = { change, _ -> dragging = shareAt(change.position.x, width, INSET.toPx()) },
+                    onHorizontalDrag = { change, _ -> dragging = barScale(width, INSET.toPx(), THICKNESS.toPx()).share(change.position.x) },
                 )
             }.semantics {
                 contentDescription = "Seek bar"
@@ -216,18 +239,19 @@ fun SeekBar(
                 }
             },
     ) {
-        val thickness = 8.dp.toPx()
-        val top = size.height - thickness - 8.dp.toPx()
+        val thickness = THICKNESS.toPx()
+        val top = (size.height - thickness) / 2 // the middle of the bar is the middle of the row, level with the button
         val corner = CornerRadius(thickness / 2)
-        val inset = INSET.toPx()
-        // The bar runs between the insets, which leave room for the round marker at each end.
-        val usable = (size.width - 2 * inset).coerceAtLeast(1f)
-        drawRoundRect(track, Offset(inset, top), Size(usable, thickness), corner)
-        if (buffer > 0f) drawRoundRect(BufferGrey, Offset(inset, top), Size(usable * buffer.coerceIn(0f, 1f), thickness), corner)
-        if (shown > 0f) drawRoundRect(fill, Offset(inset, top), Size(usable * shown.coerceIn(0f, 1f), thickness), corner)
-        drawCircle(fill, 8.dp.toPx(), Offset(inset + usable * shown.coerceIn(0f, 1f), top + thickness / 2))
+        val scale = barScale(size.width.toInt(), INSET.toPx(), thickness)
+        drawRoundRect(track, Offset(scale.left, top), Size(scale.right - scale.left, thickness), corner)
+
+        // A full fill goes to the end of the track; otherwise the fills end where the same scale puts their share.
+        fun fillTo(share: Float) = if (share >= 1f) scale.right else scale.x(share)
+        if (buffer > 0f) drawRoundRect(BufferGrey, Offset(scale.left, top), Size(fillTo(buffer) - scale.left, thickness), corner)
+        if (shown > 0f) drawRoundRect(fill, Offset(scale.left, top), Size(fillTo(shown) - scale.left, thickness), corner)
+        drawCircle(fill, 8.dp.toPx(), Offset(scale.x(shown), top + thickness / 2))
         if (indicator != null) {
-            val x = inset + usable * indicator.coerceIn(0f, 1f)
+            val x = scale.x(indicator)
             val half = 7.dp.toPx()
             val tip = top - 3.dp.toPx()
             val pointer =
@@ -237,7 +261,8 @@ fun SeekBar(
                     lineTo(x, tip)
                     close()
                 }
-            drawPath(pointer, arrow)
+            drawPath(pointer, Color.White)
+            drawPath(pointer, Color(0xCC000000), style = Stroke(1.5.dp.toPx(), join = StrokeJoin.Round)) // reads on light and dark
         }
     }
 }

@@ -154,7 +154,7 @@ private fun LibraryScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val message = "Importing \"${state.fileName}\"... this can take a while for a long book."
                     Text(if (state.cancelling) "Cancelling..." else message)
-                    LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
                     TextButton(onClick = library::cancelImport, enabled = !state.cancelling) { Text("Cancel") }
                 }
             }
@@ -267,6 +267,8 @@ private fun ReaderScreen(
                 modifier = Modifier.weight(1f),
             )
         }
+        SpeechStatus(session) // the bake and speech messages are at the top, the player controls at the bottom
+        BakeSection(session)
         Captions(
             session,
             listState,
@@ -279,8 +281,6 @@ private fun ReaderScreen(
             follow = follow.returned() // show the place that was chosen
             session.seekTo(share)
         })
-        SpeechStatus(session)
-        BakeSection(session)
     }
 }
 
@@ -385,7 +385,7 @@ private fun BakeSection(session: ReaderSession) {
         is BakeState.Downloading -> {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(if (state.cancelling) "Cancelling..." else "Downloading ${state.quality.label}...")
-                LinearProgressIndicator(progress = { state.fraction }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { state.fraction }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
                 TextButton(onClick = session::cancelBake, enabled = !state.cancelling) { Text("Cancel") }
             }
         }
@@ -400,7 +400,7 @@ private fun BakeSection(session: ReaderSession) {
                         ?.let { " using $it" }
                         .orEmpty()
                 Text(if (state.cancelling) "Cancelling..." else "Baking audio$using: ${state.done} of ${state.total}")
-                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth(), drawStopIndicator = {})
                 TextButton(onClick = session::cancelBake, enabled = !state.cancelling) { Text("Cancel baking") }
             }
         }

@@ -129,10 +129,42 @@ class SeekerModelTest {
     }
 
     @Test
-    fun `a touch on the bar maps to a share between its insets`() {
-        assertEquals(0f, shareAt(0f, 1000, 20f))
-        assertEquals(0.5f, shareAt(500f, 1000, 20f))
-        assertEquals(1f, shareAt(990f, 1000, 20f))
+    fun `the start and end of the book are one cap radius in from the ends of the track`() {
+        val scale = barScale(width = 1000, inset = 20f, thickness = 8f) // track from 20 to 980, caps of radius 4
+
+        assertEquals(24f, scale.x(0f))
+        assertEquals(976f, scale.x(1f))
+        assertEquals(500f, scale.x(0.5f))
+        assertEquals(24f, scale.x(-1f)) // clamped: never over a cap
+        assertEquals(976f, scale.x(2f))
+    }
+
+    @Test
+    fun `a touch maps back through the same scale`() {
+        val scale = barScale(width = 1000, inset = 20f, thickness = 8f)
+
+        assertEquals(0f, scale.share(0f)) // on or beyond the cap: the start
+        assertEquals(0.5f, scale.share(500f))
+        assertEquals(1f, scale.share(999f))
+        for (share in listOf(0f, 0.25f, 0.8f, 1f)) assertEquals(share, scale.share(scale.x(share)), 1e-5f)
+    }
+
+    @Test
+    fun `live position moves between word reports, by one word at most when words are reported`() {
+        val timeline = BookTimeline(words, emptyList(), slow) // 1 s a word, line 1 starts at 10 s
+        val atWord = timeline.elapsedMs(1, 3) // 13 s
+
+        assertEquals(atWord, timeline.elapsedMs(1, 3, 0, true))
+        assertEquals(atWord + 400, timeline.elapsedMs(1, 3, 400, true))
+        assertEquals(atWord + 1_000, timeline.elapsedMs(1, 3, 5_000, true)) // waits for the next report
+    }
+
+    @Test
+    fun `live position of an engine that reports no words runs on to the end of the line`() {
+        val timeline = BookTimeline(words, emptyList(), slow)
+
+        assertEquals(10_000 + 6_000, timeline.elapsedMs(1, 0, 6_000, false))
+        assertEquals(20_000, timeline.elapsedMs(1, 0, 60_000, false)) // never past the line
     }
 
     // Seeking a baked player: the clip and the offset in it.

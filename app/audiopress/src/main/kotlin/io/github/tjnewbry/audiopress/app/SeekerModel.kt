@@ -71,6 +71,24 @@ class BookTimeline(
         return startMs(index) + durationMs(index) * wordsInto.coerceIn(0, words) / words
     }
 
+    /**
+     * The same, moved on by [sinceMs], the time since the word was reported, so the position runs smoothly between words.
+     * When the engine reports words ([rangesReported]) it moves on by at most one word, as the next report corrects it; when
+     * it does not, it carries on at the estimated speed to the end of the line.
+     */
+    fun elapsedMs(
+        index: Int,
+        wordsInto: Int,
+        sinceMs: Long,
+        rangesReported: Boolean,
+    ): Long {
+        val base = elapsedMs(index, wordsInto)
+        val lineEnd = startMs(index) + durationMs(index)
+        val wordMs = durationMs(index) / (wordCounts.getOrNull(index)?.coerceAtLeast(1) ?: 1)
+        val room = if (rangesReported) wordMs else lineEnd - base
+        return base + sinceMs.coerceIn(0L, room.coerceAtLeast(0L))
+    }
+
     /** [ms] as a share of the book, 0 to 1. */
     fun fraction(ms: Long): Float = if (totalMs <= 0) 0f else (ms.toDouble() / totalMs).toFloat().coerceIn(0f, 1f)
 

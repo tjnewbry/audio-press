@@ -3,6 +3,7 @@ package io.github.tjnewbry.audiopress.app
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,7 +75,10 @@ class ReaderSession(
                 initialPosition,
                 onMeasured = estimator::record,
                 onSave = ::save,
-                onChange = { if (mode == PlaybackMode.LIVE) player = it },
+                onChange = {
+                    noteWordChange(it)
+                    if (mode == PlaybackMode.LIVE) player = it
+                },
             )
         livePlayer = live
         bakedPlayer = if (bake.clips != null) createBakedPlayer(initialPosition) else null
@@ -138,7 +142,23 @@ class ReaderSession(
         bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { return timeline.startMs(player.utterance) + it.intoClipMs }
         val utterance = utterances.getOrNull(player.utterance) ?: return 0L
         val wordsBefore = utterance.words.count { it.first < player.wordStart }
-        return timeline.elapsedMs(player.utterance, wordsBefore)
+        // The speech engine reports each word as it starts, so between reports the position advances at the estimated speed.
+        val since = if (player.status == PlaybackStatus.PLAYING) SystemClock.uptimeMillis() - wordChangedAt else 0L
+        return timeline.elapsedMs(player.utterance, wordsBefore, since, rangesReported)
+    }
+
+    private var wordChangedAt = 0L
+    private var rangesReported = false
+    private var lastWord: Pair<Int, Int>? = null
+
+    /** Notes when the live player moved to a new word (and whether the engine reports words at all), for the smooth position. */
+    private fun noteWordChange(state: PlayerState) {
+        val word = state.utterance to state.wordStart
+        val previous = lastWord
+        if (word == previous) return
+        rangesReported = previous != null && previous.first == state.utterance && state.status == PlaybackStatus.PLAYING
+        lastWord = word
+        wordChangedAt = SystemClock.uptimeMillis()
     }
 
     fun totalMs(): Long = timeline().totalMs

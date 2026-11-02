@@ -93,5 +93,5 @@ private fun bakingTitle(state: BakeState.Baking): String {
 
 @Composable
 private fun ProgressBar(fraction: Float) {
-    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
+    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), drawStopIndicator = {})
 }
