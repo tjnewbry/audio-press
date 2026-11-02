@@ -37,7 +37,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.dp
@@ -162,9 +161,6 @@ private fun RightAlignedLabel(
     }
 }
 
-/** The bundled monospace font (Roboto Mono, only `0123456789.x`): a phone's own system font may not honour a monospace request. */
-private val SpeedMono = FontFamily(Font(R.font.speed_mono))
-
 private val TOUCH_HEIGHT = 48.dp
 
 /** Centres the text in its line, so the digits sit in the middle of the control and of a button beside it. */
@@ -175,9 +171,10 @@ private fun SpeedPanel(
     speed: Float,
     onSpeedChange: (Float) -> Unit,
 ) {
-    val style = MaterialTheme.typography.headlineMedium.copy(fontFamily = SpeedMono, lineHeightStyle = CENTERED_LINE)
+    val style = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace, lineHeightStyle = CENTERED_LINE)
     Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
-        // In the monospace font every label is as wide as "0.85x", so the box never changes size while the number does.
+        // In a monospace font every label is as wide as "0.85x", so the box never changes size while the number does. (A phone
+        // that does not honour the system monospace font falls back to its own font, where "0.85x" is still the widest label.)
         Column(Modifier.width(IntrinsicSize.Min).padding(horizontal = 8.dp, vertical = 4.dp), horizontalAlignment = Alignment.End) {
             RightAlignedLabel(PlaybackSpeed.openLabel(speed), "0.85x", style)
             VerticalSlider(
