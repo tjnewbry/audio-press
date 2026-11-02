@@ -20,20 +20,11 @@ class ExportTest {
     val folder = TemporaryFolder()
 
     @Test
-    fun `sizes are in decimal units with the digits the dialog shows`() {
-        assertEquals("21.4 MB", formatExportSize(21_400_000))
-        assertEquals("1.82 GB", formatExportSize(1_823_000_000))
-        assertEquals("640 KB", formatExportSize(640_000))
-        assertEquals("999 bytes", formatExportSize(999))
-        assertEquals("1.0 MB", formatExportSize(1_000_000))
-    }
-
-    @Test
     fun `the success dialog says exactly what was asked for`() {
         assertEquals(
             "Export successful!\n\n" +
                 "The exported audio file is 21.4 MB.\n\n" +
-                "The book in Audio Press still takes up 1.82 GB.\n\n" +
+                "The book in Audio Press still takes up 1.8 GB.\n\n" +
                 "You can use the player in Audio Press to follow along with the text, " +
                 "but if that is not important to you then consider deleting the bake data to save space.",
             exportSuccessText(21_400_000, 1_823_000_000),

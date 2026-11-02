@@ -99,7 +99,7 @@ fun exportSuccessText(
     footprintBytes: Long,
 ): String =
     "Export successful!\n\n" +
-        "The exported audio file is ${formatExportSize(exportBytes)}.\n\n" +
-        "The book in Audio Press still takes up ${formatExportSize(footprintBytes)}.\n\n" +
+        "The exported audio file is ${formatSize(exportBytes)}.\n\n" +
+        "The book in Audio Press still takes up ${formatSize(footprintBytes)}.\n\n" +
         "You can use the player in Audio Press to follow along with the text, " +
         "but if that is not important to you then consider deleting the bake data to save space."

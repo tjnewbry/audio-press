@@ -196,7 +196,7 @@ class BookBakeControllerTest {
 
         val failed = assertNotNull(controller.state as? BakeState.Failed)
         assertTrue("Not enough free storage" in failed.message)
-        assertTrue("10 MB is free" in failed.message)
+        assertTrue("10.5 MB is free" in failed.message)
         assertEquals(emptyList(), baker.synthesized)
         assertTrue(!audio.exists())
 
@@ -238,15 +238,6 @@ class BookBakeControllerTest {
         controller.start(choice)
 
         assertEquals("No voice here", assertNotNull(controller.state as? BakeState.Failed).message)
-    }
-
-    @Test
-    fun `sizes are shown in units people read`() {
-        assertEquals("0 bytes", formatSize(0))
-        assertEquals("512 bytes", formatSize(512))
-        assertEquals("2 KB", formatSize(2048))
-        assertEquals("85 MB", formatSize(85L * 1024 * 1024))
-        assertEquals("1.5 GB", formatSize(1536L * 1024 * 1024))
     }
 
     @Test

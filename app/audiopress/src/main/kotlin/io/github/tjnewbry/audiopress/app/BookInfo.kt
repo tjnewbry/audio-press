@@ -22,7 +22,7 @@ fun bookInfoLines(
         "Source file: ${source?.fileName ?: "Unknown"}",
         "Source length: ${formatPages(length)}",
         "Imported range: $first-$last",
-        "Bake data: ${sizes.bake?.let(::formatInfoSize) ?: "none"}",
-        "Total: ${formatInfoSize(sizes.total)}",
+        "Bake data: ${sizes.bake?.let(::formatSize) ?: "none"}",
+        "Total: ${formatSize(sizes.total)}",
     )
 }

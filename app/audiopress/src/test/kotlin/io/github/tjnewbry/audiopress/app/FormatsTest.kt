@@ -29,9 +29,29 @@ class FormatsTest {
     }
 
     @Test
-    fun `download sizes are whole decimal megabytes`() {
-        assertEquals("137 MB", formatMegabytes(137_400_000))
-        assertEquals("0 MB", formatMegabytes(0))
+    fun `every size is in decimal units with one decimal for megabytes and gigabytes`() {
+        assertEquals("0 bytes", formatSize(0))
+        assertEquals("512 bytes", formatSize(512))
+        assertEquals("999 bytes", formatSize(999))
+        assertEquals("1 KB", formatSize(1_000))
+        assertEquals("2 KB", formatSize(2_048))
+        assertEquals("640 KB", formatSize(640_000))
+        assertEquals("999 KB", formatSize(999_400))
+        assertEquals("1.0 MB", formatSize(1_000_000))
+        assertEquals("21.4 MB", formatSize(21_400_000))
+        assertEquals("83.4 MB", formatSize(83_400_000))
+        assertEquals("100.0 MB", formatSize(100_000_000))
+        assertEquals("137.4 MB", formatSize(137_400_000))
+        assertEquals("999.6 MB", formatSize(999_600_000))
+        assertEquals("1.2 GB", formatSize(1_234_000_000))
+        assertEquals("1.8 GB", formatSize(1_823_000_000))
+    }
+
+    @Test
+    fun `a size that rounds up to the next unit is shown in it`() {
+        assertEquals("1.0 MB", formatSize(999_700)) // not 1000 KB
+        assertEquals("1.0 GB", formatSize(999_960_000)) // not 1000.0 MB
+        assertEquals("0 bytes", formatSize(-5)) // never negative
     }
 
     @Test

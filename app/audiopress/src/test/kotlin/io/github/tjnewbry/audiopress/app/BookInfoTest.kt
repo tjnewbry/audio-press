@@ -18,19 +18,6 @@ class BookInfoTest {
     private fun store() = BookStore(File(temp.root, "books"), newId = sequenceOf("a", "b", "c").iterator()::next)
 
     @Test
-    fun `sizes use decimal units, whole megabytes and one decimal for gigabytes`() {
-        assertEquals("0 KB", formatInfoSize(0))
-        assertEquals("640 KB", formatInfoSize(640_000))
-        assertEquals("999 KB", formatInfoSize(999_700)) // never reads "1000 KB"
-        assertEquals("1 MB", formatInfoSize(1_000_000))
-        assertEquals("83 MB", formatInfoSize(83_400_000))
-        assertEquals("100 MB", formatInfoSize(100_000_000))
-        assertEquals("999 MB", formatInfoSize(999_000_000))
-        assertEquals("1.0 GB", formatInfoSize(999_600_000))
-        assertEquals("1.2 GB", formatInfoSize(1_234_000_000))
-    }
-
-    @Test
     fun `a ranged import shows its source, range and sizes`() {
         val book = Book("a", "Title (pp. 11-11)", 1, 10, 0, BookSource("poo-poo.pdf", 431, 11, 11))
 
@@ -39,8 +26,8 @@ class BookInfoTest {
                 "Source file: poo-poo.pdf",
                 "Source length: 431 pages",
                 "Imported range: 11-11",
-                "Bake data: 83 MB",
-                "Total: 100 MB",
+                "Bake data: 83.0 MB",
+                "Total: 100.0 MB",
             ),
             bookInfoLines(book, BookSizes(83_000_000, 100_000_000)),
         )

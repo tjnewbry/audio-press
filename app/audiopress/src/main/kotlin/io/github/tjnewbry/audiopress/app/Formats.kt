@@ -2,52 +2,28 @@ package io.github.tjnewbry.audiopress.app
 
 import java.util.Locale
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
-// Every size, time and count the screens show, in one place. The size formats differ on purpose: each is the one tjnewbry
-// chose for the place it appears, so they are kept apart rather than merged.
+// Every size, time and count the screens show, in one place.
 
-/** `85 MB`, `1.2 GB`, `640 KB`: sizes in units of 1024, for the baked size in the player and the free-space messages. */
+private const val BYTES_PER_KB = 1_000.0
+private const val BYTES_PER_TENTH_MB = 100_000.0
+private const val BYTES_PER_TENTH_GB = 100_000_000.0
+private const val KB_LIMIT = 1_000
+private const val TENTH_MB_LIMIT = 10_000
+
+/**
+ * The one format for every size on screen, in decimal units (1 MB is 1,000,000 bytes): `999 bytes`, `640 KB`, `21.4 MB`,
+ * `1.2 GB`. It never reads `1000 KB` or `1000.0 MB`: a size that rounds up to the next unit is shown in it.
+ */
 fun formatSize(bytes: Long): String {
-    val kb = 1024.0
+    val b = bytes.coerceAtLeast(0L)
+    val kilobytes = Math.round(b / BYTES_PER_KB)
+    val tenthsOfMb = Math.round(b / BYTES_PER_TENTH_MB)
     return when {
-        bytes >= kb * kb * kb -> "%.1f GB".format(bytes / (kb * kb * kb))
-        bytes >= kb * kb -> "%.0f MB".format(bytes / (kb * kb))
-        bytes >= kb -> "%.0f KB".format(bytes / kb)
-        else -> "$bytes bytes"
-    }
-}
-
-/** `137 MB`: whole decimal megabytes, as the download page shows them. */
-fun formatMegabytes(bytes: Long): String = "${(bytes / DECIMAL_MB).roundToLong()} MB"
-
-private const val DECIMAL_MB = 1_000_000.0
-
-/** A size for the export dialog, in decimal units like the voice download sizes: `21.4 MB`, `1.82 GB`, `640 KB`. */
-fun formatExportSize(bytes: Long): String {
-    val kb = 1_000.0
-    val value = bytes.toDouble()
-    return when {
-        value >= kb * kb * kb -> String.format(Locale.US, "%.2f GB", value / (kb * kb * kb))
-        value >= kb * kb -> String.format(Locale.US, "%.1f MB", value / (kb * kb))
-        value >= kb -> String.format(Locale.US, "%.0f KB", value / kb)
-        else -> "$bytes bytes"
-    }
-}
-
-private const val INFO_KB = 1_000.0
-private const val INFO_MB = 1_000_000.0
-private const val INFO_GB = 1_000_000_000.0
-private const val KB_PER_MB = 1_000
-
-/** A size for the Info popup, in decimal units: "640 KB", "83 MB" (whole), "1.2 GB" (one decimal). */
-fun formatInfoSize(bytes: Long): String {
-    val b = bytes.coerceAtLeast(0L).toDouble()
-    val megabytes = Math.round(b / INFO_MB)
-    return when {
-        b >= INFO_GB || megabytes >= KB_PER_MB -> String.format(Locale.US, "%.1f GB", b / INFO_GB)
-        b >= INFO_MB -> "$megabytes MB"
-        else -> "${minOf(Math.round(b / INFO_KB), (KB_PER_MB - 1).toLong())} KB"
+        b < BYTES_PER_KB -> "$b bytes"
+        kilobytes < KB_LIMIT -> "$kilobytes KB"
+        tenthsOfMb < TENTH_MB_LIMIT -> String.format(Locale.US, "%.1f MB", tenthsOfMb / 10.0)
+        else -> String.format(Locale.US, "%.1f GB", Math.round(b / BYTES_PER_TENTH_GB) / 10.0)
     }
 }
 

@@ -14,9 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import io.github.tjnewbry.audiopress.app.BakeState
-import io.github.tjnewbry.audiopress.app.formatMegabytes
 import io.github.tjnewbry.audiopress.app.formatPercent
 import io.github.tjnewbry.audiopress.app.formatRemaining
+import io.github.tjnewbry.audiopress.app.formatSize
 import io.github.tjnewbry.audiopress.app.isCancelling
 import io.github.tjnewbry.audiopress.app.label
 import io.github.tjnewbry.audiopress.app.ui.CANCELLING
@@ -50,7 +50,7 @@ fun BakeProgressScreen(
                 is BakeState.Downloading -> {
                     Text(if (state.cancelling) CANCELLING else "Downloading ${state.quality.label}...", style = title)
                     ProgressBar(state.fraction, bar)
-                    Text("${formatMegabytes(state.doneBytes)} / ${formatMegabytes(state.totalBytes)}", style = body)
+                    Text("${formatSize(state.doneBytes)} / ${formatSize(state.totalBytes)}", style = body)
                     Text(formatPercent(state.fraction), style = body)
                     OutlinedButton(onClick = onBackground, modifier = Modifier.padding(top = Spacing.Huge)) { Text("Run in background") }
                 }
