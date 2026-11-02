@@ -4,12 +4,14 @@ import io.github.tjnewbry.audiopress.bake.BakeFailedException
 import io.github.tjnewbry.audiopress.bake.BakeItem
 import io.github.tjnewbry.audiopress.bake.BakeOutOfMemoryException
 import io.github.tjnewbry.audiopress.bake.BakedBook
+import io.github.tjnewbry.audiopress.bake.Wav
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroDownloadException
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroService
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroUnavailableException
 import io.github.tjnewbry.audiopress.bake.kokoro.downloadSizeMegabytes
 import io.github.tjnewbry.audiopress.core.CancellationToken
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import io.github.tjnewbry.audiopress.bake.BakeCancelledException as ModuleCancelledException
 import io.github.tjnewbry.audiopress.bake.BookBaker as ModuleBookBaker
 
@@ -83,6 +85,11 @@ class KokoroBakeService(
         }
         // The module writes the manifest list when a bake ends, so for an unfinished bake count the clip files instead.
         val files = folder.listFiles { f -> f.name.endsWith(".wav") }?.sortedBy { it.name }.orEmpty()
-        return if (files.isEmpty()) null else BakeManifest(files.map { BakedClip(it, 0) }, complete = false)
+        return if (files.isEmpty()) null else BakeManifest(files.map { BakedClip(it, unfinishedDurationMs(it)) }, complete = false)
     }
+
+    // Lengths of clips of an unfinished bake, read from the WAV header once per file (and per size, as a file still being written grows).
+    private val lengths = ConcurrentHashMap<String, Long>()
+
+    private fun unfinishedDurationMs(file: File): Long = lengths.getOrPut("${file.path}:${file.length()}") { Wav.durationMs(file) ?: 0L }
 }

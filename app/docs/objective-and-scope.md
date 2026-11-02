@@ -18,7 +18,9 @@ The prototype has exactly these three features.
    * **Timestamp:** elapsed and total time. In live mode these are estimates (from word count and speaking rate, refined as it plays); for a baked book they are the real audio durations.
    * **Saved progress:** the position is saved automatically, and reopening a book resumes where it left off, in either mode.
 
-**Not in the prototype:** a seek bar or skip buttons (tapping a caption line is the only way to jump), chapter navigation, speed or voice settings, playback with the screen off, scanned PDFs, and highlighting words on the PDF pages.
+**Player screen (redesign after A6):** the book text is in a bounded, scrollable box, with the play and pause icon (no words) at the left of a seeker bar below it. The bar has a coloured fill for the position read, a grey fill for how much is baked, and tap or drag to seek. All of it, and the scroll arrow, use one time scale: the exact baked time plus an estimate (170 words per minute, or the baked speed once enough is baked) for what is not baked. The grey fill grows as clips finish, also while the book is open during a bake, and is absent for live speech with nothing baked. When the user scrolls the box by hand, a downward arrow on the bar shows where the box is (the top edge of the text slides to the bottom edge towards the end of the book, so the arrow reaches both ends) and a "Return to player position" button appears; tapping it, a line, or the bar locks the box to the playing line again.
+
+**Not in the prototype:** skip buttons, chapter navigation, speed or voice settings, playback with the screen off, scanned PDFs, and highlighting words on the PDF pages.
 
 **Deleting (added after A6):** each library row has a Delete button that opens a dialog with Delete all (the book and its baked audio), Delete bake (only the baked audio and saved voice; the book stays) and Cancel. A running download or bake of that book is cancelled and waited for first. Downloaded voice models are shared and never deleted. Import keeps no copy of the PDF, so there is nothing else to remove.
 

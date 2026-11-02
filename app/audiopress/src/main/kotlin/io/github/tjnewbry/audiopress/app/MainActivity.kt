@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,12 +22,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -39,16 +41,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +55,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import io.github.tjnewbry.audiopress.core.SegmentKind
-import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
@@ -255,6 +253,9 @@ private fun ReaderScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Line i is list item i. The box follows the playing line while locked; scrolling by hand unlocks it.
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (session.currentLine - 1).coerceAtLeast(0))
+    var follow by rememberSaveable(stateSaver = followSaver) { mutableStateOf(ScrollFollow()) }
     Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Library") }
@@ -266,81 +267,89 @@ private fun ReaderScreen(
                 modifier = Modifier.weight(1f),
             )
         }
-        SpeakButton(session)
-        Timestamp(session)
-        Captions(session) { BakeSection(session) }
+        Captions(
+            session,
+            listState,
+            follow,
+            onUserScroll = { follow = follow.userScrolled() },
+            onReturn = { follow = follow.returned() },
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+        )
+        PlayerBar(session, listState, follow, onSeek = { share ->
+            follow = follow.returned() // show the place that was chosen
+            session.seekTo(share)
+        })
+        SpeechStatus(session)
+        BakeSection(session)
     }
 }
 
-/** How long automatic scrolling waits after the user scrolls by hand. */
-private const val USER_SCROLL_PAUSE_MS = 4000L
+private val followSaver = Saver<ScrollFollow, Boolean>(save = { it.locked }, restore = { ScrollFollow(it) })
 
 @Composable
 private fun Captions(
     session: ReaderSession,
-    header: @Composable () -> Unit,
+    listState: LazyListState,
+    follow: ScrollFollow,
+    onUserScroll: () -> Unit,
+    onReturn: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    // Line i is list item i + 1, after the header, so showing the line before the current one means item `current`.
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = session.currentLine)
-    var lastUserScroll by remember { mutableLongStateOf(0L) }
-    var autoScrolling by remember { mutableStateOf(false) }
+    val userScrolled by rememberUpdatedState(onUserScroll)
     LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
-            if (scrolling && !autoScrolling) lastUserScroll = SystemClock.uptimeMillis()
-        }
+        // Only a finger on the list counts; the box scrolling itself to the playing line does not.
+        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) userScrolled() }
     }
     val current = session.currentLine
-    LaunchedEffect(current, session.player.status) {
-        val idle = SystemClock.uptimeMillis() - lastUserScroll > USER_SCROLL_PAUSE_MS
-        if (session.player.status == PlaybackStatus.PLAYING && idle) {
-            autoScrolling = true
-            try {
-                listState.animateScrollToItem(current) // the line before it stays in view for context
-            } finally {
-                autoScrolling = false
+    LaunchedEffect(current, follow.autoScrolls) {
+        // The line before the current one stays in view for context.
+        if (follow.autoScrolls) listState.animateScrollToItem((current - 1).coerceAtLeast(0))
+    }
+    Box(modifier.outline(dotted = false).padding(6.dp)) {
+        LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxSize()) {
+            itemsIndexed(session.lines, key = lineKey, contentType = {
+                _,
+                line,
+                ->
+                session.paragraphs[line.paragraph].kind
+            }) { index, line ->
+                val isCurrent = index == current && session.player.status != PlaybackStatus.STOPPED
+                val heading = session.paragraphs[line.paragraph].kind == SegmentKind.HEADING
+                val highlight = MaterialTheme.colorScheme.primaryContainer
+                val word = if (isCurrent) session.currentWord else null // only the current line follows the word
+                val text =
+                    buildAnnotatedString {
+                        append(line.text)
+                        if (word != null && word.last < line.text.length) {
+                            addStyle(SpanStyle(background = highlight, fontWeight = FontWeight.Bold), word.first, word.last + 1)
+                        }
+                    }
+                Text(
+                    text,
+                    style = if (heading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (heading) FontWeight.Bold else null,
+                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onReturn() // the tapped line is where the player goes, so the box follows it again
+                                session.jumpTo(index)
+                            }.padding(vertical = 6.dp),
+                )
             }
         }
-    }
-    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        item(key = "header", contentType = "header") { header() }
-        itemsIndexed(session.lines, key = lineKey, contentType = { _, line -> session.paragraphs[line.paragraph].kind }) { index, line ->
-            val isCurrent = index == current && session.player.status != PlaybackStatus.STOPPED
-            val heading = session.paragraphs[line.paragraph].kind == SegmentKind.HEADING
-            val highlight = MaterialTheme.colorScheme.primaryContainer
-            val word = if (isCurrent) session.currentWord else null // only the current line follows the word
-            val text =
-                buildAnnotatedString {
-                    append(line.text)
-                    if (word != null && word.last < line.text.length) {
-                        addStyle(SpanStyle(background = highlight, fontWeight = FontWeight.Bold), word.first, word.last + 1)
-                    }
-                }
-            Text(
-                text,
-                style = if (heading) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyLarge,
-                fontWeight = if (heading) FontWeight.Bold else null,
-                color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth().clickable { session.jumpTo(index) }.padding(vertical = 6.dp),
-            )
+        if (follow.showReturnButton) {
+            FilledTonalButton(onClick = onReturn, modifier = Modifier.align(Alignment.BottomCenter)) { Text("Return to player position") }
         }
     }
 }
 
 private val lineKey: (Int, Utterance) -> Any = { index, _ -> index }
 
+/** The messages about the speech engine that used to sit under the Speak button. */
 @Composable
-private fun SpeakButton(session: ReaderSession) {
-    val label =
-        when (session.player.status) {
-            PlaybackStatus.STOPPED -> "Speak"
-            PlaybackStatus.PLAYING -> "Pause"
-            PlaybackStatus.PAUSED -> "Resume"
-        }
-    Button(
-        onClick = session::togglePlayback,
-        enabled = session.speech == SpeechState.Ready || session.bakeState is BakeState.Baked,
-        modifier = Modifier.fillMaxWidth(),
-    ) { Text(label) }
+private fun SpeechStatus(session: ReaderSession) {
     when (val speech = session.speech) {
         SpeechState.Starting -> {
             Text("Starting text-to-speech...")
@@ -360,32 +369,6 @@ private fun SpeakButton(session: ReaderSession) {
         }
     }
 }
-
-@Composable
-private fun Timestamp(session: ReaderSession) {
-    // Baked audio moves between words, so redraw twice a second while it plays.
-    var tick by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(session.player.status, session.mode) {
-        while (session.player.status == PlaybackStatus.PLAYING && session.mode == PlaybackMode.BAKED) {
-            tick = SystemClock.uptimeMillis()
-            delay(TICK_MS)
-        }
-    }
-    val baked = session.mode == PlaybackMode.BAKED
-    val times = "${formatDuration(session.elapsedSeconds())} / ${formatDuration(session.totalSeconds())}"
-    Text(
-        when {
-            session.player.waiting -> "Waiting for audio…"
-            session.listeningWhileBaking -> "Listening while baking"
-            baked -> "$times (baked audio)"
-            else -> "$times (estimated, live speech)"
-        },
-        style = MaterialTheme.typography.labelLarge,
-        modifier = Modifier.semantics { stateDescription = "tick $tick" },
-    )
-}
-
-private const val TICK_MS = 500L
 
 @Composable
 private fun BakeSection(session: ReaderSession) {

@@ -88,8 +88,10 @@ class ReaderSession(
         mode = switching.mode
         player = switching.state
         bake.listener = { state ->
+            val durations = bake.bakedDurationsMs() // read here, on the bake's own thread, not on the main one
             main.post {
                 bakeState = state
+                bakedDurations = durations
                 if (state !is BakeState.Baking && state !is BakeState.Downloading) showProgress = false
                 if (bakedPlayer == null && state is BakeState.Baked) bakedPlayer = createBakedPlayer(switching.position)
                 bakedPlayer?.onClipsReady() // a clip may have landed that playback is waiting for
@@ -112,16 +114,42 @@ class ReaderSession(
             return player.wordStart until player.wordEnd
         }
 
-    /** Time before the current point: real in baked mode, estimated in live mode (from word counts, refined as it plays). */
-    fun elapsedSeconds(): Double {
-        bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { return it.elapsedMs / MS_PER_SECOND }
-        val utterance = utterances.getOrNull(player.utterance) ?: return 0.0
-        val wordsBefore = utterance.words.count { it.first < player.wordStart }
-        return estimator.elapsedSeconds(player.utterance, wordsBefore)
+    /** The real lengths of the clips that can be played (all of them, or those made so far); read by the screen, so it follows a bake. */
+    private var bakedDurations: List<Long> by mutableStateOf(bake.bakedDurationsMs())
+    private var cachedTimeline: BookTimeline? = null
+    private var cachedFor: Pair<List<Long>, Double>? = null
+
+    /**
+     * The time scale of the whole book: real lengths for what is baked, estimates for the rest. The seeker bar, the buffer
+     * and the scroll arrow all use it. It is rebuilt when more clips are baked or the speaking-rate estimate changes.
+     */
+    fun timeline(): BookTimeline {
+        val key = bakedDurations to estimator.secondsPerWord
+        cachedTimeline?.let { if (cachedFor?.first === key.first && cachedFor?.second == key.second) return it }
+        return BookTimeline(utterances.map { it.words.size }, key.first, key.second).also {
+            cachedTimeline = it
+            cachedFor = key
+        }
     }
 
-    fun totalSeconds(): Double =
-        bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { it.totalMs / MS_PER_SECOND } ?: estimator.totalSeconds()
+    /** Time before the current point, in milliseconds: the clip's real position in baked mode, else the estimate for the current word. */
+    fun elapsedMs(): Long {
+        val timeline = timeline()
+        bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { return timeline.startMs(player.utterance) + it.intoClipMs }
+        val utterance = utterances.getOrNull(player.utterance) ?: return 0L
+        val wordsBefore = utterance.words.count { it.first < player.wordStart }
+        return timeline.elapsedMs(player.utterance, wordsBefore)
+    }
+
+    fun totalMs(): Long = timeline().totalMs
+
+    /** Moves playback to [share] (0 to 1) of the book's time; keeps playing if it was playing, else waits there. */
+    fun seekTo(share: Double) {
+        val timeline = timeline()
+        val point = timeline.lineAt((share.coerceIn(0.0, 1.0) * timeline.totalMs).toLong())
+        val line = utterances.getOrNull(point.index) ?: return
+        switcher?.seekTo(Position(line.paragraph, line.start), point.intoMs, player.status == PlaybackStatus.PLAYING)
+    }
 
     /** True while the book is read from baked clips that are still being made. */
     val listeningWhileBaking: Boolean get() = mode == PlaybackMode.BAKED && bake.clips == null
@@ -223,9 +251,5 @@ class ReaderSession(
 
     private fun save(position: Position) {
         if (!saver.isShutdown) saver.execute { runCatching { saveProgress(position) } }
-    }
-
-    private companion object {
-        const val MS_PER_SECOND = 1000.0
     }
 }

@@ -97,11 +97,10 @@ class BakedPlayer(
     val totalMs: Long get() = msBefore(source.count)
 
     /** The real time before the current point, in milliseconds. */
-    val elapsedMs: Long
-        get() {
-            val into = if (state.status == PlaybackStatus.PLAYING && !state.waiting) clipPlayer.positionMs else pausedAtMs
-            return msBefore(state.utterance.coerceIn(0, source.count)) + into
-        }
+    val elapsedMs: Long get() = msBefore(state.utterance.coerceIn(0, source.count)) + intoClipMs
+
+    /** How far into the current clip playback is (or will resume), in milliseconds. */
+    val intoClipMs: Int get() = if (state.status == PlaybackStatus.PLAYING && !state.waiting) clipPlayer.positionMs else pausedAtMs
 
     private fun msBefore(index: Int): Long = (0 until index).sumOf { source.clip(it)?.durationMs ?: 0L }
 
@@ -123,6 +122,27 @@ class BakedPlayer(
 
     override fun jumpTo(position: Position) {
         utteranceIndexAt(utterances, position)?.let { startClip(it, 0) }
+    }
+
+    override fun seekTo(
+        position: Position,
+        offsetMs: Long,
+        play: Boolean,
+    ) {
+        val index = utteranceIndexAt(utterances, position) ?: return
+        val length = source.clip(index)?.durationMs ?: 0L // a clip not baked yet starts from its beginning
+        val into = offsetMs.coerceIn(0L, length).toInt()
+        if (play) {
+            startClip(index, into)
+            return
+        }
+        if (state.status == PlaybackStatus.PLAYING) {
+            sequence++ // a completion from the clip being stopped must not move playback on
+            if (!state.waiting) clipPlayer.pause()
+        }
+        pausedAtMs = into
+        state = PlayerState(PlaybackStatus.PAUSED, index)
+        onSave(this.position)
     }
 
     override fun moveTo(position: Position) {

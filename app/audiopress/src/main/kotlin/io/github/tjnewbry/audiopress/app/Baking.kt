@@ -212,6 +212,21 @@ class BookBakeController(
         return baker.readManifest(folder)?.clips?.getOrNull(index)
     }
 
+    /**
+     * The real lengths, in milliseconds, of the clips that can be played now, in order: all of them once the book is
+     * baked, the finished ones while it is being baked, and none otherwise.
+     */
+    fun bakedDurationsMs(): List<Long> {
+        clips?.let { all -> return all.map { it.durationMs } }
+        val reported = (state as? BakeState.Baking)?.done ?: return emptyList()
+        return baker
+            .readManifest(folder)
+            ?.clips
+            ?.take(reported)
+            ?.map { it.durationMs }
+            .orEmpty()
+    }
+
     fun downloadSizeBytes(quality: VoiceQuality): Long = baker.downloadSizeBytes(quality)
 
     fun downloadSizeMegabytes(quality: VoiceQuality): Int = baker.downloadSizeMegabytes(quality)

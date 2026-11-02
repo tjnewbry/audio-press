@@ -18,6 +18,18 @@ interface Playback {
 
     /** Stops if playing, and sets the place where [play] will continue, without starting. */
     fun moveTo(position: Position)
+
+    /**
+     * Goes to the utterance that holds [position], [offsetMs] milliseconds into its audio where the player can do that,
+     * and plays from there if [play], else waits there paused. Live speech always starts at the utterance.
+     */
+    fun seekTo(
+        position: Position,
+        offsetMs: Long,
+        play: Boolean,
+    ) {
+        if (play) jumpTo(position) else moveTo(position)
+    }
 }
 
 enum class PlaybackMode { LIVE, BAKED }
@@ -55,6 +67,15 @@ class SwitchingPlayback(
     fun jumpTo(position: Position) {
         chooseMode()
         active.jumpTo(position)
+    }
+
+    fun seekTo(
+        position: Position,
+        offsetMs: Long,
+        play: Boolean,
+    ) {
+        chooseMode()
+        active.seekTo(position, offsetMs, play)
     }
 
     fun pause() = active.pause()

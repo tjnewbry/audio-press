@@ -112,7 +112,7 @@ private val UnselectedOutline = Color(0xFF616161)
 private val OutlineColor = Color(0xFF455A64)
 
 /** A rounded outline that is dotted ([dotted]) or solid. */
-private fun Modifier.outline(
+internal fun Modifier.outline(
     dotted: Boolean,
     color: Color = OutlineColor,
 ): Modifier =
