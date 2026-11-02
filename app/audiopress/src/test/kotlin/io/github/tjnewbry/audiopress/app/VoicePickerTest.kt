@@ -36,30 +36,33 @@ class VoicePickerTest {
 
     @Test
     fun `a voice on a model that is not downloaded offers to download and bake`() {
-        val lite = VoicePicker(VoiceQuality.LITE).withVoice(bella).action(downloaded = false, downloadMb = 120)
-        val medium = VoicePicker(VoiceQuality.MEDIUM).withVoice(santa).action(downloaded = false, downloadMb = 205)
-        val heavy = VoicePicker(VoiceQuality.HEAVY).withVoice(santa).action(downloaded = false, downloadMb = 355)
+        val lite = VoicePicker(VoiceQuality.LITE).withVoice(bella).action(downloaded = false, downloadMb = 137)
+        val medium = VoicePicker(VoiceQuality.MEDIUM).withVoice(bella).action(downloaded = false, downloadMb = 222)
+        val heavy = VoicePicker(VoiceQuality.HEAVY).withVoice(santa).action(downloaded = false, downloadMb = 370)
 
-        assertEquals(VoiceAction("Download lite (120mb) and\nbake audio using Bella", enabled = true), lite)
-        assertEquals("Download medium (205mb) and\nbake audio using Santa", medium.text)
-        assertEquals("Download heavy (355mb) and\nbake audio using Santa", heavy.text)
+        assertEquals(VoiceAction("Download lite (137mb) and\nbake audio using Bella (lite)", enabled = true), lite)
+        assertEquals("Download medium (222mb) and\nbake audio using Bella (medium)", medium.text)
+        assertEquals("Download heavy (370mb) and\nbake audio using Santa (heavy)", heavy.text)
     }
 
     @Test
     fun `a voice on a downloaded model offers to bake`() {
         val action = VoicePicker(VoiceQuality.HEAVY).withVoice(bella).action(downloaded = true)
 
-        assertEquals(VoiceAction("Bake audio using Bella", enabled = true), action)
+        assertEquals(VoiceAction("Bake audio using Bella (heavy)", enabled = true), action)
     }
 
     @Test
-    fun `switching tabs deselects the voice, and choosing the same tab keeps it`() {
-        val picked = VoicePicker(VoiceQuality.LITE).withVoice(bella)
+    fun `switching tabs keeps the voice, and the button then names the new quality`() {
+        val picked = VoicePicker(VoiceQuality.MEDIUM).withVoice(bella)
 
-        assertEquals(bella, picked.withQuality(VoiceQuality.LITE).voice)
         val switched = picked.withQuality(VoiceQuality.HEAVY)
-        assertEquals(VoicePicker(VoiceQuality.HEAVY, null), switched)
-        assertFalse(switched.action(downloaded = true).enabled)
+        assertEquals(VoicePicker(VoiceQuality.HEAVY, bella), switched)
+        assertEquals("Bake audio using Bella (heavy)", switched.action(downloaded = true).text)
+        val lite = picked.withQuality(VoiceQuality.LITE).action(downloaded = false, downloadMb = 137)
+        assertEquals("Download lite (137mb) and\nbake audio using Bella (lite)", lite.text)
+        assertEquals(VoiceChoice("af_bella", VoiceQuality.HEAVY), switched.choice)
+        assertFalse(VoicePicker(VoiceQuality.HEAVY).action(downloaded = true).enabled)
     }
 
     @Test

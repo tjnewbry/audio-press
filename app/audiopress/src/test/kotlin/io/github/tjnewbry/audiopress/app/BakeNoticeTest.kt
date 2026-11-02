@@ -11,7 +11,7 @@ class BakeNoticeTest {
 
     @Test
     fun `a download shows its quality and percent`() {
-        val notice = assertNotNull(noticeFor("My Book", BakeState.Downloading(VoiceQuality.LITE, 0.426f)))
+        val notice = assertNotNull(noticeFor("My Book", BakeState.Downloading(VoiceQuality.LITE, 426L, 1000L)))
 
         assertEquals("My Book", notice.title)
         assertEquals("Downloading Lite...", notice.text)
@@ -32,7 +32,7 @@ class BakeNoticeTest {
 
     @Test
     fun `cancelling says so in both stages`() {
-        assertEquals("Cancelling...", noticeFor("b", BakeState.Downloading(VoiceQuality.HEAVY, 0.1f, cancelling = true))?.text)
+        assertEquals("Cancelling...", noticeFor("b", BakeState.Downloading(VoiceQuality.HEAVY, 100L, 1000L, cancelling = true))?.text)
         val baking = assertNotNull(noticeFor("b", BakeState.Baking(1, 5, cancelling = true, voice = santa)))
         assertEquals("Cancelling...", baking.text)
         assertTrue(baking.cancelling)
@@ -52,7 +52,7 @@ class BakeNoticeTest {
         val shown = mutableListOf<String?>()
         val tracker = ActiveBakeTracker { shown += it?.bookId }
 
-        tracker.update("a", "Book A", BakeState.Downloading(VoiceQuality.LITE, 0f))
+        tracker.update("a", "Book A", BakeState.Downloading(VoiceQuality.LITE, 0L, 1000L))
         tracker.update("a", "Book A", BakeState.Baking(1, 5, voice = santa))
         assertEquals("a", tracker.current?.bookId)
         assertEquals("Book A", tracker.current?.bookTitle)

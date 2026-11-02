@@ -108,33 +108,42 @@ class BakeNotifier(
         manager.createNotificationChannel(channel)
     }
 
-    /** The ongoing notification for [notice]. */
+    /** The ongoing notification for [notice]: silent, shown at once, and not swipeable, even while the app is open. */
     fun progress(notice: BakeNotice): Notification {
         val builder =
-            NotificationCompat
-                .Builder(context, CHANNEL)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+            ongoing()
                 .setContentTitle(notice.title)
                 .setContentText(notice.text)
-                .setOngoing(true)
-                .setOnlyAlertOnce(true)
-                .setContentIntent(openApp())
                 .setProgress(notice.total.coerceAtLeast(1), notice.done, notice.indeterminate)
         if (!notice.cancelling) builder.addAction(0, "Cancel", cancelIntent())
-        return builder.build()
+        return finish(builder)
     }
 
     /** A notification for something to start with: the service must show one the moment it starts. */
     fun starting(): Notification =
+        finish(
+            ongoing()
+                .setContentTitle("Audio Press")
+                .setContentText("Getting ready to bake...")
+                .setProgress(1, 0, true),
+        )
+
+    /** The parts every ongoing notification shares: low importance and silent, ongoing, shown immediately. */
+    private fun ongoing(): NotificationCompat.Builder =
         NotificationCompat
             .Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Audio Press")
-            .setContentText("Getting ready to bake...")
+            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
             .setOngoing(true)
-            .setProgress(1, 0, true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(openApp())
-            .build()
+
+    /** Builds it, and marks it as not clearable, which also stops Android 14 and newer letting the user swipe it away. */
+    private fun finish(builder: NotificationCompat.Builder): Notification =
+        builder.build().also { it.flags = it.flags or Notification.FLAG_NO_CLEAR or Notification.FLAG_ONGOING_EVENT }
 
     /** Shows how a bake ended, where the user can see it after it. */
     fun showResult(

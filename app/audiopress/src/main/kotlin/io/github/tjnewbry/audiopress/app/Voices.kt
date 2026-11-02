@@ -52,7 +52,8 @@ data class VoicePicker(
     val quality: VoiceQuality,
     val voice: KokoroVoice? = null,
 ) {
-    fun withQuality(selected: VoiceQuality): VoicePicker = if (selected == quality) this else VoicePicker(selected)
+    /** Switching tabs keeps the selected voice; the button then names the new quality. */
+    fun withQuality(selected: VoiceQuality): VoicePicker = copy(quality = selected)
 
     fun withVoice(selected: KokoroVoice): VoicePicker = copy(voice = selected)
 
@@ -65,13 +66,11 @@ data class VoicePicker(
         downloadMb: Int = 0,
     ): VoiceAction {
         val chosen = voice ?: return VoiceAction("Select a voice", enabled = false)
+        val named = quality.label.lowercase()
         return if (downloaded) {
-            VoiceAction("Bake audio using ${chosen.name}", enabled = true)
+            VoiceAction("Bake audio using ${chosen.name} ($named)", enabled = true)
         } else {
-            VoiceAction(
-                "Download ${quality.label.lowercase()} (${downloadMb}mb) and\nbake audio using ${chosen.name}",
-                enabled = true,
-            )
+            VoiceAction("Download $named (${downloadMb}mb) and\nbake audio using ${chosen.name} ($named)", enabled = true)
         }
     }
 

@@ -32,10 +32,10 @@ class KokoroBakeService(
     override fun downloadModel(
         quality: VoiceQuality,
         cancellation: CancellationToken,
-        onProgress: (fraction: Float) -> Unit,
+        onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     ) {
         try {
-            service.download(quality, cancellation) { onProgress(it.fraction) }
+            service.download(quality, cancellation) { onProgress(it.doneBytes, it.totalBytes) }
         } catch (e: ModuleCancelledException) {
             throw BakeCancelledException()
         } catch (e: KokoroDownloadException) {

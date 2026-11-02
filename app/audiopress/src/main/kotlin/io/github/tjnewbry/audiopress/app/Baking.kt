@@ -4,6 +4,7 @@ import io.github.tjnewbry.audiopress.core.CancellationToken
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.Executor
+import kotlin.math.roundToLong
 
 /** One baked utterance: an audio [file] and its real [durationMs]. Clip number i is utterance number i. */
 data class BakedClip(
@@ -45,13 +46,13 @@ interface BakeService {
 
     /**
      * Downloads the model of [quality] (and the shared voices file, once), resuming a partial download. Blocks.
-     * Reports the share done, 0 to 1. Throws [BakeCancelledException] if [cancellation] is cancelled (partial files
+     * Reports the bytes done of the bytes to fetch. Throws [BakeCancelledException] if [cancellation] is cancelled (partial files
      * are kept), and [BakeProblem] with a message for the user when it fails (no network, a damaged download, a full disk).
      */
     fun downloadModel(
         quality: VoiceQuality,
         cancellation: CancellationToken,
-        onProgress: (fraction: Float) -> Unit,
+        onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     )
 
     /**
@@ -85,7 +86,7 @@ object UnavailableBaker : BakeService {
     override fun downloadModel(
         quality: VoiceQuality,
         cancellation: CancellationToken,
-        onProgress: (fraction: Float) -> Unit,
+        onProgress: (doneBytes: Long, totalBytes: Long) -> Unit,
     ): Unit = throw UnsupportedOperationException("Baking is not available")
 
     override fun bake(
@@ -113,12 +114,16 @@ sealed interface BakeState {
         val choice: VoiceChoice? = null,
     ) : BakeState
 
-    /** The model of [quality] is being downloaded, [fraction] done (0 to 1). */
+    /** The model of [quality] is being downloaded: [doneBytes] of [totalBytes] so far. */
     data class Downloading(
         val quality: VoiceQuality,
-        val fraction: Float,
+        val doneBytes: Long,
+        val totalBytes: Long,
         val cancelling: Boolean = false,
-    ) : BakeState
+    ) : BakeState {
+        /** The share done, 0 to 1. */
+        val fraction: Float get() = if (totalBytes <= 0) 0f else (doneBytes.toDouble() / totalBytes).toFloat().coerceIn(0f, 1f)
+    }
 
     data class Baking(
         val done: Int,
@@ -203,7 +208,17 @@ class BookBakeController(
         writeChoice(use)
         val cancellation = CancellationToken()
         token = cancellation
-        publish(if (download) BakeState.Downloading(use.quality, 0f) else BakeState.Baking(done, utterances.size, voice = use))
+        publish(
+            if (download) {
+                BakeState.Downloading(
+                    use.quality,
+                    0L,
+                    baker.downloadSizeBytes(use.quality),
+                )
+            } else {
+                BakeState.Baking(done, utterances.size, voice = use)
+            },
+        )
         executor.execute { run(use, download, done, cancellation) }
     }
 
@@ -215,7 +230,9 @@ class BookBakeController(
     ) {
         try {
             if (download) {
-                baker.downloadModel(use.quality, cancellation) { publish(BakeState.Downloading(use.quality, it, cancellation.isCancelled)) }
+                baker.downloadModel(use.quality, cancellation) { done, total ->
+                    publish(BakeState.Downloading(use.quality, done, total, cancellation.isCancelled))
+                }
                 publish(BakeState.Baking(done, utterances.size, voice = use))
             }
             baker.bake(utterances, folder, use, cancellation) { n, total ->
@@ -337,3 +354,8 @@ fun formatSize(bytes: Long): String {
         else -> "$bytes bytes"
     }
 }
+
+/** `137 MB`: decimal megabytes, as the download button shows them. */
+fun formatMegabytes(bytes: Long): String = "${(bytes / DECIMAL_MB).roundToLong()} MB"
+
+private const val DECIMAL_MB = 1_000_000.0

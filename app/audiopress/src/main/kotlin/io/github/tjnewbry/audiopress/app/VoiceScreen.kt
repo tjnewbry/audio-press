@@ -20,10 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -47,7 +45,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.tjnewbry.audiopress.bake.kokoro.KokoroVoice
 import java.io.IOException
-import kotlin.math.roundToInt
 
 /** Plays the short sample of a voice from the app's assets, one at a time. Use on the main thread. */
 class SamplePlayer(
@@ -107,17 +104,23 @@ private val pickerSaver =
         },
     )
 
-private val SelectedTab = Color(0xFFBBDEFB)
+// Unselected tabs are pure greys (zero saturation); the selected tab is a saturated blue with white text.
+private val SelectedTab = Color(0xFF1565C0)
+private val SelectedOutline = Color(0xFF0D47A1)
 private val UnselectedTab = Color(0xFFE0E0E0)
+private val UnselectedOutline = Color(0xFF616161)
 private val OutlineColor = Color(0xFF455A64)
 
 /** A rounded outline that is dotted ([dotted]) or solid. */
-private fun Modifier.outline(dotted: Boolean): Modifier =
+private fun Modifier.outline(
+    dotted: Boolean,
+    color: Color = OutlineColor,
+): Modifier =
     drawBehind {
         val width = 2.dp.toPx()
         val effect = if (dotted) PathEffect.dashPathEffect(floatArrayOf(width * 2, width * 2)) else null
         drawRoundRect(
-            OutlineColor,
+            color,
             topLeft = Offset(width / 2, width / 2),
             size = Size(size.width - width, size.height - width),
             cornerRadius = CornerRadius(8.dp.toPx()),
@@ -127,8 +130,8 @@ private fun Modifier.outline(dotted: Boolean): Modifier =
 
 /**
  * The screen the Bake button opens: three quality tabs (dotted outline when the model is not downloaded, solid when it
- * is), a note, the 28 voices to listen to, and a button to download if needed and bake. Switching tabs deselects the
- * voice and stops the sample, and the list keeps its scroll position.
+ * is), a note, the 28 voices to listen to, and a button to download if needed and bake. Switching tabs keeps the
+ * voice, stops the sample, and the list keeps its scroll position.
  */
 @Composable
 fun VoiceScreen(
@@ -136,7 +139,7 @@ fun VoiceScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    var picker by rememberSaveable(stateSaver = pickerSaver) { mutableStateOf(VoicePicker(VoiceQuality.LITE)) }
+    var picker by rememberSaveable(stateSaver = pickerSaver) { mutableStateOf(VoicePicker(VoiceQuality.MEDIUM)) }
     var playing: String? by remember { mutableStateOf(null) }
     val samples = remember { SamplePlayer(context) { playing = it } }
     DisposableEffect(Unit) { onDispose { samples.stop() } }
@@ -152,13 +155,13 @@ fun VoiceScreen(
                         .weight(1f)
                         .height(44.dp)
                         .background(if (selected) SelectedTab else UnselectedTab, RoundedCornerShape(8.dp))
-                        .outline(dotted = !session.isModelDownloaded(quality))
+                        .outline(!session.isModelDownloaded(quality), if (selected) SelectedOutline else UnselectedOutline)
                         .clickable {
                             if (!selected) samples.stop()
                             picker = picker.withQuality(quality)
                         },
                     contentAlignment = Alignment.Center,
-                ) { Text(quality.label, color = Color.Black) }
+                ) { Text(quality.label, color = if (selected) Color.White else Color(0xFF212121)) }
             }
         }
         Text(picker.note, minLines = 3, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
@@ -224,64 +227,4 @@ private fun SpeakerIcon() {
         drawArc(color, -45f, 90f, false, Offset(w * 0.45f, h * 0.3f), Size(w * 0.3f, h * 0.4f), style = stroke)
         drawArc(color, -45f, 90f, false, Offset(w * 0.4f, h * 0.1f), Size(w * 0.5f, h * 0.8f), style = stroke)
     }
-}
-
-/** The full-screen progress of a bake: the download of the model (when needed), then the baking. */
-@Composable
-fun BakeProgressScreen(
-    state: BakeState,
-    onCancel: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        when (state) {
-            is BakeState.Downloading -> {
-                Text(
-                    if (state.cancelling) "Cancelling..." else "Downloading ${state.quality.label}...",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                ProgressBar(state.fraction)
-                Text("${(state.fraction * 100).roundToInt()}%", style = MaterialTheme.typography.bodyLarge)
-                CancelButton(onCancel, enabled = !state.cancelling)
-            }
-
-            is BakeState.Baking -> {
-                val name = state.voice?.voice?.name
-                Text(
-                    if (state.cancelling) {
-                        "Cancelling..."
-                    } else if (name != null) {
-                        "Baking audio using $name..."
-                    } else {
-                        "Baking audio..."
-                    },
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                ProgressBar(if (state.total > 0) state.done.toFloat() / state.total else 0f)
-                Text("${state.done} of ${state.total}", style = MaterialTheme.typography.bodyLarge)
-                CancelButton(onCancel, enabled = !state.cancelling)
-            }
-
-            else -> {
-                Text("Finishing...", style = MaterialTheme.typography.titleLarge)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProgressBar(fraction: Float) {
-    LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp))
-}
-
-@Composable
-private fun CancelButton(
-    onCancel: () -> Unit,
-    enabled: Boolean,
-) {
-    TextButton(onClick = onCancel, enabled = enabled) { Text("Cancel") }
 }

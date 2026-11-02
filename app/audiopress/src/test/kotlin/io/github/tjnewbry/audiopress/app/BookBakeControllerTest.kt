@@ -41,15 +41,15 @@ class BookBakeControllerTest {
         override fun downloadModel(
             quality: VoiceQuality,
             cancellation: CancellationToken,
-            onProgress: (Float) -> Unit,
+            onProgress: (Long, Long) -> Unit,
         ) {
-            onProgress(0f)
+            onProgress(0L, 100L)
             if (cancelDownload) {
                 cancellation.cancel()
                 throw BakeCancelledException()
             }
-            onProgress(0.5f)
-            onProgress(1f)
+            onProgress(50L, 100L)
+            onProgress(100L, 100L)
             downloads += quality
             downloaded += quality
         }
