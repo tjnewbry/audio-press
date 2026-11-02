@@ -18,7 +18,9 @@ The prototype has exactly these three features.
    * **Timestamp:** elapsed and total time. In live mode these are estimates (from word count and speaking rate, refined as it plays); for a baked book they are the real audio durations.
    * **Saved progress:** the position is saved automatically, and reopening a book resumes where it left off, in either mode.
 
-**Not in the prototype:** a seek bar or skip buttons (tapping a caption line is the only way to jump), chapter navigation, speed or voice settings, playback with the screen off, deleting books, scanned PDFs, and highlighting words on the PDF pages.
+**Not in the prototype:** a seek bar or skip buttons (tapping a caption line is the only way to jump), chapter navigation, speed or voice settings, playback with the screen off, scanned PDFs, and highlighting words on the PDF pages.
+
+**Deleting (added after A6):** each library row has a Delete button that opens a dialog with Delete all (the book and its baked audio), Delete bake (only the baked audio and saved voice; the book stays) and Cancel. A running download or bake of that book is cancelled and waited for first. Downloaded voice models are shared and never deleted. Import keeps no copy of the PDF, so there is nothing else to remove.
 
 ## Decisions
 

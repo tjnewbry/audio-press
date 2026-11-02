@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
@@ -186,7 +187,14 @@ private fun LibraryScreen(
                         items(
                             library.books,
                             key = { it.id },
-                        ) { book -> BookRow(book, baked = book.id in library.bakedBooks) { library.open(book) } }
+                        ) { book ->
+                            BookRow(
+                                book,
+                                baked = book.id in library.bakedBooks,
+                                onDelete = { everything -> library.delete(book, everything) },
+                                onClick = { library.open(book) },
+                            )
+                        }
                     }
                 }
             }
@@ -199,15 +207,45 @@ private fun LibraryScreen(
 private fun BookRow(
     book: Book,
     baked: Boolean,
+    onDelete: (everything: Boolean) -> Unit,
     onClick: () -> Unit,
 ) {
+    var asking by rememberSaveable { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(book.title, style = MaterialTheme.typography.titleMedium)
-            val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(book.importedAt))
-            Text("%,d words, imported %s".format(book.wordCount, date), style = MaterialTheme.typography.bodyMedium)
-            if (baked) Text("Baked audio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        Row(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(book.title, style = MaterialTheme.typography.titleMedium)
+                val date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(book.importedAt))
+                Text("%,d words, imported %s".format(book.wordCount, date), style = MaterialTheme.typography.bodyMedium)
+                if (baked) Text("Baked audio", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            }
+            TextButton(onClick = { asking = true }) { Text("Delete") }
         }
+    }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text("Delete \"${book.title}\"?") },
+            text = {
+                Text(
+                    "Delete all removes the book and its baked audio. " +
+                        "Delete bake removes only the baked audio and keeps the book.",
+                )
+            },
+            confirmButton = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = {
+                        asking = false
+                        onDelete(true)
+                    }) { Text("Delete all") }
+                    TextButton(onClick = {
+                        asking = false
+                        onDelete(false)
+                    }) { Text("Delete bake") }
+                    TextButton(onClick = { asking = false }) { Text("Cancel") }
+                }
+            },
+        )
     }
 }
 

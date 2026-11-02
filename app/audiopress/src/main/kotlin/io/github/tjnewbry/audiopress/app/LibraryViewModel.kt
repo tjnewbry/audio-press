@@ -150,6 +150,36 @@ class LibraryViewModel(
         }
     }
 
+    /**
+     * Deletes [book] and everything kept for it ([everything] true), or only its baked audio and saved bake voice.
+     * A running download or bake of the book is cancelled first and waited for, so nothing writes while files go.
+     */
+    fun delete(
+        book: Book,
+        everything: Boolean,
+    ) {
+        if (reader != null) return // only from the library, where no book is open or playing
+        openError = null
+        worker.execute {
+            val deletion = BookDeletion(store, center)
+            when (if (everything) deletion.deleteAll(book) else deletion.deleteBake(book)) {
+                DeleteResult.DONE -> {
+                    // Nothing to report.
+                }
+
+                DeleteResult.STILL_BAKING -> {
+                    openError =
+                        "\"${book.title}\" is still baking and did not stop. Cancel the bake and try again."
+                }
+
+                DeleteResult.INCOMPLETE -> {
+                    openError = "Some files of \"${book.title}\" could not be deleted."
+                }
+            }
+            refresh()
+        }
+    }
+
     /** Pauses the open book, if any, so the position is saved. */
     fun pausePlayback() {
         reader?.pausePlayback()

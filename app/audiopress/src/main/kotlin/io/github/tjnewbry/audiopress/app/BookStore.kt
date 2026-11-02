@@ -101,6 +101,26 @@ class BookStore(
     /** The file that remembers which voice book [id] was (being) baked with. */
     fun voiceFile(id: String): File = File(bookFolder(id), "bake-voice.txt")
 
+    /**
+     * Removes everything kept for book [id]: transcript, properties, progress, saved voice, and baked audio. Only that
+     * book's own folder is touched; a missing book is not an error. Returns false if something could not be removed.
+     */
+    fun deleteBook(id: String): Boolean {
+        val folder = bookFolder(id)
+        // Take the properties file first, so a half-deleted book never shows in the list.
+        File(folder, METADATA_FILE).delete()
+        return !folder.exists() || folder.deleteRecursively()
+    }
+
+    /** Removes only book [id]'s baked audio and saved bake voice. Missing files are fine. Returns false if something stayed. */
+    fun deleteBake(id: String): Boolean {
+        val audio = audioFolder(id)
+        val voice = voiceFile(id)
+        val audioGone = !audio.exists() || audio.deleteRecursively()
+        val voiceGone = !voice.exists() || voice.delete()
+        return audioGone && voiceGone
+    }
+
     private fun bookFolder(id: String): File {
         require(id.isNotEmpty() && '/' !in id && '\\' !in id && id != "." && id != "..") { "Bad book id" }
         return File(root, id)

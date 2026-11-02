@@ -3,7 +3,9 @@ package io.github.tjnewbry.audiopress.app
 import io.github.tjnewbry.audiopress.core.CancellationToken
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
 /** One baked utterance: an audio [file] and its real [durationMs]. Clip number i is utterance number i. */
@@ -189,6 +191,10 @@ class BookBakeController(
     @Volatile
     private var token: CancellationToken? = null
 
+    /** Counts down when the work of the last [start] has ended; null before the first start. */
+    @Volatile
+    private var running: CountDownLatch? = null
+
     init {
         refresh()
     }
@@ -236,10 +242,42 @@ class BookBakeController(
                 BakeState.Baking(done, utterances.size, voice = use)
             },
         )
-        executor.execute { run(use, download, done, cancellation) }
+        val finished = CountDownLatch(1)
+        running = finished
+        executor.execute { run(use, download, done, cancellation, finished) }
+    }
+
+    /**
+     * Cancels a running download or bake and waits until its work has ended (so nothing writes to the folder any more).
+     * Returns false if it did not end within [timeoutMs]. Call from a thread other than the one that does the work.
+     */
+    fun cancelAndWait(timeoutMs: Long = STOP_TIMEOUT_MS): Boolean {
+        val finished = running ?: return true
+        cancel()
+        return finished.await(timeoutMs, TimeUnit.MILLISECONDS)
+    }
+
+    /** Forgets the saved voice after the bake was deleted from disk, and shows the book as not baked. */
+    fun resetAfterDelete() {
+        savedChoice = null
+        refresh()
     }
 
     private fun run(
+        use: VoiceChoice,
+        download: Boolean,
+        done: Int,
+        cancellation: CancellationToken,
+        finished: CountDownLatch,
+    ) {
+        try {
+            work(use, download, done, cancellation)
+        } finally {
+            finished.countDown()
+        }
+    }
+
+    private fun work(
         use: VoiceChoice,
         download: Boolean,
         done: Int,
@@ -363,6 +401,7 @@ fun usableSpaceOf(folder: File): Long {
     return existing?.usableSpace ?: 0L
 }
 
+private const val STOP_TIMEOUT_MS = 60_000L
 private const val BYTES_PER_WORD = 18_000L
 private const val SPACE_MARGIN_BYTES = 50L * 1024 * 1024
 private const val LOW_SPACE_BYTES = 20L * 1024 * 1024

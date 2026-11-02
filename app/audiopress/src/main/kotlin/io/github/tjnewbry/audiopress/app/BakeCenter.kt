@@ -29,7 +29,7 @@ class AudioPressApp : Application() {
 class BakeCenter(
     private val app: Application,
     val baker: BakeService = KokoroBakeService(kokoroService(File(app.noBackupFilesDir, "kokoro"))),
-) {
+) : BakeStopper {
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "bake") }
     private val controllers = ConcurrentHashMap<String, BookBakeController>()
     private val tracker = ActiveBakeTracker(::onActiveChanged)
@@ -58,6 +58,18 @@ class BakeCenter(
     /** Cancels whatever is being downloaded or baked (the notification's Cancel button). */
     fun cancelAll() {
         controllers.values.forEach { it.cancel() }
+    }
+
+    override fun stopAndWait(bookId: String): Boolean = controllers[bookId]?.cancelAndWait() ?: true
+
+    /** The book's bake was deleted from disk: it goes back to not baked, with no saved voice. */
+    override fun bakeDeleted(bookId: String) {
+        controllers[bookId]?.resetAfterDelete()
+    }
+
+    /** The book was deleted: drop its controller. */
+    override fun forget(bookId: String) {
+        controllers.remove(bookId)?.observer = null
     }
 
     private fun onBookState(
