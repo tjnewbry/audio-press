@@ -25,24 +25,53 @@ interface ClipPlayer {
 }
 
 /**
- * Plays [clips] (one per utterance, in order, with real durations) and tracks the current utterance. There is
- * no word timing in baked audio, so the current word is never set. Positions are reported as the start of the
- * utterance. Call from one thread; the callbacks of [clipPlayer] must come on it too.
+ * Where the clips of a book come from: one clip per utterance, in order. While a book is still being baked a clip
+ * may not be there yet, so [clip] can return null for a clip that will appear later.
+ */
+interface ClipSource {
+    /** The number of clips the finished bake will have (one per utterance). */
+    val count: Int
+
+    /** Clip number [index], or null if it is not baked yet. */
+    fun clip(index: Int): BakedClip?
+}
+
+/** The clips of a book that is fully baked. */
+class StaticClips(
+    private val clips: List<BakedClip>,
+) : ClipSource {
+    override val count: Int get() = clips.size
+
+    override fun clip(index: Int): BakedClip? = clips.getOrNull(index)
+}
+
+/**
+ * Plays the clips of [source] (one per utterance, in order) and tracks the current utterance. There is no word timing
+ * in baked audio, so the current word is never set. Positions are reported as the start of the utterance. If the book
+ * is still being baked and playback reaches a clip that is not there yet, the state is `waiting` until
+ * [onClipsReady] says the clip has landed. Call from one thread; the callbacks of [clipPlayer] must come on it too.
  */
 class BakedPlayer(
     private val utterances: List<Utterance>,
-    private val clips: List<BakedClip>,
+    private val source: ClipSource,
     private val clipPlayer: ClipPlayer,
     start: Position? = null,
     private val onSave: (Position) -> Unit = {},
     private val onChange: (PlayerState) -> Unit = {},
 ) : Playback {
-    init {
-        require(clips.size == utterances.size) { "${clips.size} clips for ${utterances.size} utterances" }
-    }
+    /** For a book that is fully baked. */
+    constructor(
+        utterances: List<Utterance>,
+        clips: List<BakedClip>,
+        clipPlayer: ClipPlayer,
+        start: Position? = null,
+        onSave: (Position) -> Unit = {},
+        onChange: (PlayerState) -> Unit = {},
+    ) : this(utterances, StaticClips(clips), clipPlayer, start, onSave, onChange)
 
-    private val msBefore: LongArray =
-        LongArray(clips.size + 1).also { sums -> clips.forEachIndexed { i, clip -> sums[i + 1] = sums[i] + clip.durationMs } }
+    init {
+        require(source.count == utterances.size) { "${source.count} clips for ${utterances.size} utterances" }
+    }
 
     private var pausedAtMs = 0
     private var sequence = 0
@@ -64,28 +93,31 @@ class BakedPlayer(
             return Position(utterance.paragraph, utterance.start)
         }
 
-    val totalMs: Long get() = msBefore.last()
+    /** The real length of the book, as far as its clips are known, in milliseconds. */
+    val totalMs: Long get() = msBefore(source.count)
 
     /** The real time before the current point, in milliseconds. */
     val elapsedMs: Long
         get() {
-            val into = if (state.status == PlaybackStatus.PLAYING) clipPlayer.positionMs else pausedAtMs
-            return msBefore[state.utterance.coerceIn(0, clips.size)] + into
+            val into = if (state.status == PlaybackStatus.PLAYING && !state.waiting) clipPlayer.positionMs else pausedAtMs
+            return msBefore(state.utterance.coerceIn(0, source.count)) + into
         }
+
+    private fun msBefore(index: Int): Long = (0 until index).sumOf { source.clip(it)?.durationMs ?: 0L }
 
     override fun toggle() {
         if (state.status == PlaybackStatus.PLAYING) pause() else play()
     }
 
     override fun play() {
-        if (clips.isNotEmpty() && state.status != PlaybackStatus.PLAYING) startClip(state.utterance, pausedAtMs)
+        if (source.count > 0 && state.status != PlaybackStatus.PLAYING) startClip(state.utterance, pausedAtMs)
     }
 
     override fun pause() {
         if (state.status != PlaybackStatus.PLAYING) return
         sequence++ // a completion from the clip being stopped must not move playback on
-        pausedAtMs = clipPlayer.pause()
-        state = state.copy(status = PlaybackStatus.PAUSED)
+        if (!state.waiting) pausedAtMs = clipPlayer.pause()
+        state = state.copy(status = PlaybackStatus.PAUSED, waiting = false)
         onSave(position)
     }
 
@@ -101,13 +133,27 @@ class BakedPlayer(
         setStopped(position)
     }
 
+    /** More clips may have landed: if playback is waiting for one, carry on. */
+    fun onClipsReady() {
+        if (state.status != PlaybackStatus.PLAYING || !state.waiting) return
+        val clip = source.clip(state.utterance) ?: return
+        sequence++
+        state = state.copy(waiting = false)
+        clipPlayer.start(clip.file, pausedAtMs, sequence)
+    }
+
+    /** The bake ended without the clip playback is waiting for; stop waiting and pause there. */
+    fun stopWaiting() {
+        if (state.waiting) pause()
+    }
+
     private fun setStopped(position: Position) {
         pausedAtMs = 0
         state = stateAt(position)
     }
 
     private fun stateAt(position: Position?): PlayerState {
-        if (position == null || clips.isEmpty() || position == Position(0, 0)) return PlayerState()
+        if (position == null || source.count == 0 || position == Position(0, 0)) return PlayerState()
         return PlayerState(PlaybackStatus.PAUSED, locate(utterances, position).first)
     }
 
@@ -117,14 +163,15 @@ class BakedPlayer(
     ) {
         sequence++
         pausedAtMs = fromMs
-        state = PlayerState(PlaybackStatus.PLAYING, index)
+        val clip = source.clip(index)
+        state = PlayerState(PlaybackStatus.PLAYING, index, waiting = clip == null)
         onSave(position)
-        clipPlayer.start(clips[index].file, fromMs, sequence)
+        clip?.let { clipPlayer.start(it.file, fromMs, sequence) }
     }
 
     private fun onClipCompleted() {
         val next = state.utterance + 1
-        if (next < clips.size) {
+        if (next < source.count) {
             startClip(next, 0)
         } else {
             pausedAtMs = 0

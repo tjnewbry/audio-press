@@ -21,6 +21,8 @@ data class PlayerState(
     val utterance: Int = 0,
     val wordStart: Int = 0,
     val wordEnd: Int = 0,
+    /** True while playing but waiting for the next clip of a book that is still being baked. */
+    val waiting: Boolean = false,
 )
 
 /**

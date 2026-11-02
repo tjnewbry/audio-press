@@ -130,6 +130,8 @@ sealed interface BakeState {
         val total: Int,
         val cancelling: Boolean = false,
         val voice: VoiceChoice? = null,
+        /** About how long is left, in milliseconds, from the rate so far; null before there is a rate. */
+        val etaMs: Long? = null,
     ) : BakeState
 
     data class Failed(
@@ -158,7 +160,11 @@ class BookBakeController(
     private val sizeOf: (File) -> Long = ::folderSize,
     private val freeSpace: (File) -> Long = ::usableSpaceOf,
     private val choiceFile: File? = null,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
+    private val wordsBefore: LongArray =
+        LongArray(utterances.size + 1).also { sums -> utterances.forEachIndexed { i, u -> sums[i + 1] = sums[i] + u.words.size } }
+
     @Volatile
     var listener: ((BakeState) -> Unit)? = null
 
@@ -188,6 +194,17 @@ class BookBakeController(
     }
 
     fun isModelDownloaded(quality: VoiceQuality): Boolean = baker.isModelDownloaded(quality)
+
+    /**
+     * Clip [index] if it can be played now: any clip once the whole book is baked, and while baking only the clips the
+     * baker has reported as done (a clip is a finished file only after it is reported, never a half-written one).
+     */
+    fun clipAt(index: Int): BakedClip? {
+        clips?.let { return it.getOrNull(index) }
+        val reported = (state as? BakeState.Baking)?.done ?: return null
+        if (index >= reported) return null
+        return baker.readManifest(folder)?.clips?.getOrNull(index)
+    }
 
     fun downloadSizeBytes(quality: VoiceQuality): Long = baker.downloadSizeBytes(quality)
 
@@ -235,8 +252,17 @@ class BookBakeController(
                 }
                 publish(BakeState.Baking(done, utterances.size, voice = use))
             }
+            val startedAt = now()
             baker.bake(utterances, folder, use, cancellation) { n, total ->
-                publish(BakeState.Baking(n, total, cancellation.isCancelled, use))
+                val remaining =
+                    estimateRemainingMs(
+                        startedAt,
+                        now(),
+                        wordsBefore[done.coerceAtMost(utterances.size)],
+                        wordsBefore[n.coerceAtMost(utterances.size)],
+                        wordsBefore.last(),
+                    )
+                publish(BakeState.Baking(n, total, cancellation.isCancelled, use, remaining))
             }
             refresh()
         } catch (e: BakeCancelledException) {
@@ -359,3 +385,41 @@ fun formatSize(bytes: Long): String {
 fun formatMegabytes(bytes: Long): String = "${(bytes / DECIMAL_MB).roundToLong()} MB"
 
 private const val DECIMAL_MB = 1_000_000.0
+
+/**
+ * About how many milliseconds of baking are left, from the speed so far: [wordsDone] minus [wordsAtStart] words in the
+ * time from [startMs] to [nowMs], with [wordsTotal] words in all. Null while there is no speed to go by yet.
+ */
+fun estimateRemainingMs(
+    startMs: Long,
+    nowMs: Long,
+    wordsAtStart: Long,
+    wordsDone: Long,
+    wordsTotal: Long,
+): Long? {
+    val doneSince = wordsDone - wordsAtStart
+    val elapsed = nowMs - startMs
+    if (doneSince <= 0 || elapsed <= 0) return null
+    return ((wordsTotal - wordsDone).coerceAtLeast(0) * elapsed.toDouble() / doneSince).toLong()
+}
+
+/** `less than a minute left`, `about 12 min left`, `about 2 h 5 min left`. */
+fun formatRemaining(ms: Long): String {
+    val minutes = (ms + MS_PER_MINUTE - 1) / MS_PER_MINUTE
+    return when {
+        minutes < 1 -> "less than a minute left"
+        minutes < MINUTES_PER_HOUR -> "about $minutes min left"
+        else -> "about ${minutes / MINUTES_PER_HOUR} h ${minutes % MINUTES_PER_HOUR} min left"
+    }
+}
+
+private const val MS_PER_MINUTE = 60_000L
+private const val MINUTES_PER_HOUR = 60L
+
+/** The clips of a book as its [controller] has them right now, for playing while the bake is still going on. */
+class BakeClipSource(
+    private val controller: BookBakeController,
+    override val count: Int,
+) : ClipSource {
+    override fun clip(index: Int): BakedClip? = controller.clipAt(index)
+}

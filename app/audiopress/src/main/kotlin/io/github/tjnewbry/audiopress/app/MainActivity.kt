@@ -96,11 +96,31 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
                     val modifier = Modifier.padding(padding).padding(horizontal = 16.dp)
                     when {
-                        reader == null && showLicences -> LicencesScreen({ showLicences = false }, modifier)
-                        reader == null -> LibraryScreen(library, { showLicences = true }, modifier)
-                        reader.showProgress -> BakeProgressScreen(reader.bakeState, reader::cancelBake, modifier)
-                        reader.showVoices -> VoiceScreen(reader, modifier)
-                        else -> ReaderScreen(reader, library::closeReader, modifier)
+                        reader == null && showLicences -> {
+                            LicencesScreen({ showLicences = false }, modifier)
+                        }
+
+                        reader == null -> {
+                            LibraryScreen(library, { showLicences = true }, modifier)
+                        }
+
+                        reader.showProgress -> {
+                            BakeProgressScreen(
+                                reader.bakeState,
+                                onCancel = reader::cancelBake,
+                                onBackground = { moveTaskToBack(true) },
+                                onListen = reader::listenWhileBaking,
+                                modifier = modifier,
+                            )
+                        }
+
+                        reader.showVoices -> {
+                            VoiceScreen(reader, modifier)
+                        }
+
+                        else -> {
+                            ReaderScreen(reader, library::closeReader, modifier)
+                        }
                     }
                 }
             }
@@ -316,7 +336,12 @@ private fun Timestamp(session: ReaderSession) {
     val baked = session.mode == PlaybackMode.BAKED
     val times = "${formatDuration(session.elapsedSeconds())} / ${formatDuration(session.totalSeconds())}"
     Text(
-        if (baked) "$times (baked audio)" else "$times (estimated, live speech)",
+        when {
+            session.player.waiting -> "Waiting for audio…"
+            session.listeningWhileBaking -> "Listening while baking"
+            baked -> "$times (baked audio)"
+            else -> "$times (estimated, live speech)"
+        },
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.semantics { stateDescription = "tick $tick" },
     )

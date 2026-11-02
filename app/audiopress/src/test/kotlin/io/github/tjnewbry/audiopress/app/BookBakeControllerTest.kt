@@ -346,4 +346,56 @@ class BookBakeControllerTest {
         assertEquals(other, controller.savedChoice)
         assertEquals(listOf(choice, other), baker.baked)
     }
+
+    @Test
+    fun `while baking only the clips reported done can be played, and every clip once the book is done`() {
+        val controller = controller(FakeBaker())
+        val seen = mutableListOf<Pair<Int, Int>>() // clips reported done, clips that can be played
+        controller.listener = { state ->
+            if (state is BakeState.Baking) seen += state.done to (0 until 4).count { controller.clipAt(it) != null }
+        }
+
+        controller.start(choice)
+
+        assertEquals(listOf(0 to 0, 1 to 1, 2 to 2, 3 to 3, 4 to 4), seen)
+        assertEquals(listOf("clip0.wav", "clip1.wav", "clip2.wav", "clip3.wav"), (0 until 4).map { controller.clipAt(it)?.file?.name })
+        assertNull(controller.clipAt(4))
+    }
+
+    @Test
+    fun `nothing can be played from a book that is not being baked`() {
+        val controller = controller(FakeBaker().apply { stopAfter = 2 })
+        controller.start(choice) // cancelled after two clips: they exist, but nothing is baking now
+
+        assertNull(controller.clipAt(0))
+    }
+
+    @Test
+    fun `the time left is worked out from the words baked so far`() {
+        var clock = 0L
+        val baker =
+            object : BakeService by FakeBaker() {
+                override fun bake(
+                    utterances: List<Utterance>,
+                    folder: File,
+                    voice: VoiceChoice,
+                    cancellation: CancellationToken,
+                    onProgress: (Int, Int) -> Unit,
+                ) {
+                    for (i in 1..utterances.size) {
+                        clock += 10_000 // each clip takes 10 s
+                        onProgress(i, utterances.size)
+                    }
+                }
+            }
+        val controller = BookBakeController(texts, audio, baker, now, freeSpace = { free }, choiceFile = choiceFile, now = { clock })
+        val etas = mutableListOf<Long?>()
+        controller.listener = { state -> if (state is BakeState.Baking) etas += state.etaMs }
+
+        controller.start(choice)
+
+        // The first Baking state, before any clip is done, has no estimate. After that, four equal clips at 10 s each:
+        // 30 s left after the first, 20 s after the second, 10 s after the third, none after the last.
+        assertEquals(listOf(null, 30_000L, 20_000L, 10_000L, 0L), etas)
+    }
 }

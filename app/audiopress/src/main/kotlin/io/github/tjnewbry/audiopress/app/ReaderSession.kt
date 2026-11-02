@@ -77,8 +77,13 @@ class ReaderSession(
                 onChange = { if (mode == PlaybackMode.LIVE) player = it },
             )
         livePlayer = live
-        bakedPlayer = createBakedPlayer(initialPosition)
-        val switching = SwitchingPlayback(live, { bakedPlayer }, onModeChange = { mode = it })
+        bakedPlayer = if (bake.clips != null) createBakedPlayer(initialPosition) else null
+        // Baked audio can be played once the book is baked, or while it is being baked (the clips made so far).
+        val switching =
+            SwitchingPlayback(live, { bakedPlayer.takeIf { bake.clips != null || bakeState is BakeState.Baking } }, onModeChange = {
+                mode =
+                    it
+            })
         switcher = switching
         mode = switching.mode
         player = switching.state
@@ -86,7 +91,9 @@ class ReaderSession(
             main.post {
                 bakeState = state
                 if (state !is BakeState.Baking && state !is BakeState.Downloading) showProgress = false
-                if (bakedPlayer == null) bakedPlayer = createBakedPlayer(switching.position)
+                if (bakedPlayer == null && state is BakeState.Baked) bakedPlayer = createBakedPlayer(switching.position)
+                bakedPlayer?.onClipsReady() // a clip may have landed that playback is waiting for
+                if (state is BakeState.NotBaked || state is BakeState.Failed) bakedPlayer?.stopWaiting()
             }
         }
         bakeState = bake.state
@@ -115,6 +122,18 @@ class ReaderSession(
 
     fun totalSeconds(): Double =
         bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { it.totalMs / MS_PER_SECOND } ?: estimator.totalSeconds()
+
+    /** True while the book is read from baked clips that are still being made. */
+    val listeningWhileBaking: Boolean get() = mode == PlaybackMode.BAKED && bake.clips == null
+
+    /** Opens the reader on this book and plays the clips as they are baked, from where reading is; the bake carries on. */
+    fun listenWhileBaking() {
+        showProgress = false
+        if (bakedPlayer == null) bakedPlayer = createBakedPlayer(switcher?.position)
+        preferLive = false
+        switcher?.preferLive = false
+        switcher?.let { it.jumpTo(it.position) }
+    }
 
     fun togglePlayback() {
         switcher?.toggle()
@@ -191,11 +210,10 @@ class ReaderSession(
     }
 
     private fun createBakedPlayer(start: Position?): BakedPlayer? {
-        val clips = bake.clips ?: return null
-        if (clips.size != utterances.size) return null
+        if (utterances.isEmpty()) return null
         return BakedPlayer(
             utterances,
-            clips,
+            BakeClipSource(bake, utterances.size),
             clipPlayer,
             start,
             onSave = ::save,
