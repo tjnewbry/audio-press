@@ -1,4 +1,4 @@
-package io.github.tjnewbry.audiopress.app
+package io.github.tjnewbry.audiopress.app.ui.about
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,14 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.tjnewbry.audiopress.app.ui.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
 /** The asset the build puts together from the app's notices and those of the bake module (see `generateNotices`). */
-const val LICENCES_ASSET = "licences.txt"
+private const val LICENCES_ASSET = "licences.txt"
 
 /** About Audio Press: the licences and notices of everything it is built from, as one scrollable text. */
 @Composable
@@ -47,7 +47,7 @@ fun LicencesScreen(
                 }
             }
     }
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.Small)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("Back") }
             Text("About / Licences", style = MaterialTheme.typography.titleLarge)

@@ -6,7 +6,6 @@ import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToLong
 
 /** One baked utterance: an audio [file] and its real [durationMs]. Clip number i is utterance number i. */
 data class BakedClip(
@@ -147,6 +146,13 @@ sealed interface BakeState {
         val bytes: Long,
     ) : BakeState
 }
+
+/** True after Cancel was pressed on a download or bake that has not stopped yet. */
+val BakeState.isCancelling: Boolean
+    get() = (this as? BakeState.Downloading)?.cancelling ?: (this as? BakeState.Baking)?.cancelling ?: false
+
+/** True while a model is being downloaded or the book is being baked. */
+val BakeState.isRunning: Boolean get() = this is BakeState.Downloading || this is BakeState.Baking
 
 /**
  * Bakes one book: downloads the model if needed, then bakes, reports progress, cancels, and knows what is on disk.
@@ -424,22 +430,6 @@ private const val LOW_SPACE_BYTES = 20L * 1024 * 1024
 /** The total size in bytes of the files under [folder]; 0 when it does not exist. */
 fun folderSize(folder: File): Long = folder.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 
-/** `85 MB`, `1.2 GB`, `640 KB`: sizes for people, in units of 1024. */
-fun formatSize(bytes: Long): String {
-    val kb = 1024.0
-    return when {
-        bytes >= kb * kb * kb -> "%.1f GB".format(bytes / (kb * kb * kb))
-        bytes >= kb * kb -> "%.0f MB".format(bytes / (kb * kb))
-        bytes >= kb -> "%.0f KB".format(bytes / kb)
-        else -> "$bytes bytes"
-    }
-}
-
-/** `137 MB`: decimal megabytes, as the download button shows them. */
-fun formatMegabytes(bytes: Long): String = "${(bytes / DECIMAL_MB).roundToLong()} MB"
-
-private const val DECIMAL_MB = 1_000_000.0
-
 /**
  * About how many milliseconds of baking are left, from the speed so far: [wordsDone] minus [wordsAtStart] words in the
  * time from [startMs] to [nowMs], with [wordsTotal] words in all. Null while there is no speed to go by yet.
@@ -456,19 +446,6 @@ fun estimateRemainingMs(
     if (doneSince <= 0 || elapsed <= 0) return null
     return ((wordsTotal - wordsDone).coerceAtLeast(0) * elapsed.toDouble() / doneSince).toLong()
 }
-
-/** `less than a minute left`, `about 12 min left`, `about 2 h 5 min left`. */
-fun formatRemaining(ms: Long): String {
-    val minutes = (ms + MS_PER_MINUTE - 1) / MS_PER_MINUTE
-    return when {
-        minutes < 1 -> "less than a minute left"
-        minutes < MINUTES_PER_HOUR -> "about $minutes min left"
-        else -> "about ${minutes / MINUTES_PER_HOUR} h ${minutes % MINUTES_PER_HOUR} min left"
-    }
-}
-
-private const val MS_PER_MINUTE = 60_000L
-private const val MINUTES_PER_HOUR = 60L
 
 /** The clips of a book as its [controller] has them right now, for playing while the bake is still going on. */
 class BakeClipSource(

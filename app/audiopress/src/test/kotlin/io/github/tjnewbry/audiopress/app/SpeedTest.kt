@@ -1,5 +1,6 @@
 package io.github.tjnewbry.audiopress.app
 
+import io.github.tjnewbry.audiopress.app.ui.player.fractionAt
 import io.github.tjnewbry.audiopress.core.SegmentKind
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder

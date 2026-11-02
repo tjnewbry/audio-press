@@ -7,7 +7,6 @@ import io.github.tjnewbry.audiopress.core.CancellationToken
 import java.io.File
 import java.io.IOException
 import java.io.OutputStream
-import java.util.Locale
 
 /** Where an export of a baked book to one audio file stands. */
 sealed interface ExportState {
@@ -91,17 +90,8 @@ class ExportJob(
     }
 }
 
-/** A size for people, in decimal units like the voice download sizes: `21.4 MB`, `1.82 GB`, `640 KB`. */
-fun formatExportSize(bytes: Long): String {
-    val kb = 1_000.0
-    val value = bytes.toDouble()
-    return when {
-        value >= kb * kb * kb -> String.format(Locale.US, "%.2f GB", value / (kb * kb * kb))
-        value >= kb * kb -> String.format(Locale.US, "%.1f MB", value / (kb * kb))
-        value >= kb -> String.format(Locale.US, "%.0f KB", value / kb)
-        else -> "$bytes bytes"
-    }
-}
+/** The name the save dialog suggests: the book's title with `.m4a`, without characters files cannot have. */
+fun suggestedExportName(title: String): String = title.replace(Regex("[\\/:*?\"<>|]"), "_").trim().ifEmpty { "audiobook" } + ".m4a"
 
 /** The text of the dialog shown when an export has finished. */
 fun exportSuccessText(

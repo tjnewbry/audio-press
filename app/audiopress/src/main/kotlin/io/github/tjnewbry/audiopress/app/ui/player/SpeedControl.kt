@@ -1,4 +1,4 @@
-package io.github.tjnewbry.audiopress.app
+package io.github.tjnewbry.audiopress.app.ui.player
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -46,71 +46,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import java.util.Locale
-import kotlin.math.roundToInt
-
-/**
- * The reading speed: 0.5x to 2x in steps of 0.05, 1x being the speed the book was baked at. It changes how fast the audio is
- * played or the voice speaks, never the length of the book on the bar, the buffer, the dots or the time text, which stay on
- * the book's 1x timeline.
- */
-object PlaybackSpeed {
-    const val MIN = 0.5f
-    const val MAX = 2.0f
-    const val DEFAULT = 1.0f
-
-    /** The step in hundredths, and the number of steps from [MIN] to [MAX]. */
-    private const val STEP_HUNDREDTHS = 5
-    const val STEPS = 30
-
-    /** The number of different speeds: the steps from [MIN] to [MAX] without 0.95x and 1.05x. */
-    const val POSITIONS = STEPS + 1 - 2
-
-    /** The speeds that snap to 1x instead of being offered. */
-    private val SKIPPED = setOf(95, 105)
-
-    private const val MIN_HUNDREDTHS = 50
-    private const val DEFAULT_HUNDREDTHS = 100
-
-    /** [speed] on the nearest step, within [MIN] to [MAX]; 0.95x and 1.05x are left out and become 1x. */
-    fun snap(speed: Float): Float = hundredths(speed) / HUNDRED
-
-    /** The speed for a slider position: 0 at the bottom (0.5x) to 1 at the top (2x). */
-    fun fromFraction(fraction: Float): Float = snap(MIN + fraction.coerceIn(0f, 1f) * (MAX - MIN))
-
-    /** The slider position (0 at the bottom, 1 at the top) of [speed]. */
-    fun toFraction(speed: Float): Float = (snap(speed) - MIN) / (MAX - MIN)
-
-    /** The compact label: trailing zeros trimmed, like `1x`, `1.1x`, `1.15x`, `0.5x`, `2x`. */
-    fun closedLabel(speed: Float): String {
-        val h = hundredths(speed)
-        val whole = h / HUNDRED_INT
-        val part = h % HUNDRED_INT
-        val digits =
-            when {
-                part == 0 -> ""
-                part % TEN == 0 -> ".${part / TEN}"
-                else -> String.format(Locale.US, ".%02d", part)
-            }
-        return "$whole${digits}x"
-    }
-
-    /** The label of the open control: always two decimals, like `1.00x`, `1.10x`, `0.50x`, `2.00x`. */
-    fun openLabel(speed: Float): String {
-        val h = hundredths(speed)
-        return String.format(Locale.US, "%d.%02dx", h / HUNDRED_INT, h % HUNDRED_INT)
-    }
-
-    private fun hundredths(speed: Float): Int {
-        val steps = ((speed * HUNDRED - MIN_HUNDREDTHS) / STEP_HUNDREDTHS).roundToInt().coerceIn(0, STEPS)
-        val value = MIN_HUNDREDTHS + steps * STEP_HUNDREDTHS
-        return if (value in SKIPPED) DEFAULT_HUNDREDTHS else value
-    }
-
-    private const val HUNDRED = 100f
-    private const val HUNDRED_INT = 100
-    private const val TEN = 10
-}
+import io.github.tjnewbry.audiopress.app.PlaybackSpeed
+import io.github.tjnewbry.audiopress.app.ui.MinTouchTarget
+import io.github.tjnewbry.audiopress.app.ui.Spacing
 
 /**
  * The speed control: closed, a large label of the speed; tapped, a popup over it with the speed in two decimals (monospace,
@@ -129,7 +67,7 @@ fun SpeedControl(
     val style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = TABULAR_FIGURES, lineHeightStyle = CENTERED_LINE)
     Box(
         modifier
-            .heightIn(min = TOUCH_HEIGHT)
+            .heightIn(min = MinTouchTarget)
             .clickable { open = true }
             .semantics {
                 contentDescription = "Reading speed"
@@ -158,8 +96,8 @@ fun SpeedControl(
 }
 
 /** The space around the speed label, closed and open alike. */
-private val LABEL_PADDING_X = 8.dp
-private val LABEL_PADDING_Y = 4.dp
+private val LABEL_PADDING_X = Spacing.Small
+private val LABEL_PADDING_Y = Spacing.ExtraSmall
 
 /** The label that sets the width of the speed boxes, closed and open: the widest label on the phones checked. */
 private const val WIDEST_LABEL = "0.85x"
@@ -193,8 +131,6 @@ private fun RightAlignedLabel(
     }
 }
 
-private val TOUCH_HEIGHT = 48.dp
-
 /** Centres the text in its line, so the digits sit in the middle of the control and of a button beside it. */
 private val CENTERED_LINE = LineHeightStyle(alignment = LineHeightStyle.Alignment.Center, trim = LineHeightStyle.Trim.None)
 
@@ -216,7 +152,7 @@ private fun SpeedPanel(
             fontFeatureSettings = TABULAR_FIGURES,
             lineHeightStyle = CENTERED_LINE,
         )
-    Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 6.dp, shadowElevation = 6.dp) {
+    Surface(shape = RoundedCornerShape(PANEL_CORNER), tonalElevation = 6.dp, shadowElevation = 6.dp) {
         // The label box alone sets the width (the slider has none of its own), so the popup keeps one size and one place.
         Column(
             Modifier.width(IntrinsicSize.Min).padding(horizontal = LABEL_PADDING_X, vertical = LABEL_PADDING_Y),
@@ -233,8 +169,14 @@ private fun SpeedPanel(
     }
 }
 
+private val PANEL_CORNER = 12.dp
 private val SLIDER_HEIGHT = 180.dp
 private val THUMB_RADIUS = 11.dp
+private val TRACK_WIDTH = 6.dp
+
+/** The dash across the track at 1x: half its length, and its thickness. */
+private val ONE_X_HALF_LENGTH = 10.dp
+private val ONE_X_THICKNESS = 2.dp
 
 /**
  * A slider that goes up and down: [fraction] is 0 at the bottom and 1 at the top. Tapping or dragging calls [onFraction];
@@ -270,12 +212,13 @@ private fun VerticalSlider(
     ) {
         val radius = THUMB_RADIUS.toPx()
         val x = size.width / 2
-        val trackWidth = 6.dp.toPx()
+        val trackWidth = TRACK_WIDTH.toPx()
         val thumbY = radius + (size.height - 2 * radius) * (1f - fraction.coerceIn(0f, 1f))
         drawRoundRect(track, Offset(x - trackWidth / 2, radius), Size(trackWidth, size.height - 2 * radius), CornerRadius(trackWidth / 2))
         // A thin dash across the track marks 1x, under the fill and the thumb.
         val oneX = radius + (size.height - 2 * radius) * (1f - PlaybackSpeed.toFraction(PlaybackSpeed.DEFAULT))
-        drawLine(mark, Offset(x - 10.dp.toPx(), oneX), Offset(x + 10.dp.toPx(), oneX), strokeWidth = 2.dp.toPx())
+        val half = ONE_X_HALF_LENGTH.toPx()
+        drawLine(mark, Offset(x - half, oneX), Offset(x + half, oneX), strokeWidth = ONE_X_THICKNESS.toPx())
         drawRoundRect(
             fill,
             Offset(x - trackWidth / 2, thumbY),

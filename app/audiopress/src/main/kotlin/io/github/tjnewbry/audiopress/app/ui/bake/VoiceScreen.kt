@@ -1,8 +1,5 @@
-package io.github.tjnewbry.audiopress.app
+package io.github.tjnewbry.audiopress.app.ui.bake
 
-import android.content.Context
-import android.media.MediaPlayer
-import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -32,69 +29,47 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.github.tjnewbry.audiopress.bake.kokoro.KokoroVoice
-import java.io.IOException
+import io.github.tjnewbry.audiopress.app.KOKORO_VOICES
+import io.github.tjnewbry.audiopress.app.ReaderSession
+import io.github.tjnewbry.audiopress.app.SamplePlayer
+import io.github.tjnewbry.audiopress.app.VoicePicker
+import io.github.tjnewbry.audiopress.app.VoiceQuality
+import io.github.tjnewbry.audiopress.app.defaultQuality
+import io.github.tjnewbry.audiopress.app.label
+import io.github.tjnewbry.audiopress.app.ui.OutlinedBoxPadding
+import io.github.tjnewbry.audiopress.app.ui.Spacing
+import io.github.tjnewbry.audiopress.app.ui.outline
+import io.github.tjnewbry.audiopress.app.voiceById
 
-/** Plays the short sample of a voice from the app's assets, one at a time. Use on the main thread. */
-class SamplePlayer(
-    private val context: Context,
-    private val onPlayingChanged: (voiceId: String?) -> Unit,
-) {
-    private var player: MediaPlayer? = null
+// Unselected tabs are pure greys (zero saturation); the selected tab is a saturated blue with white text.
+private val SelectedTab = Color(0xFF1565C0)
+private val SelectedTabOutline = Color(0xFF0D47A1)
+private val SelectedTabText = Color.White
+private val UnselectedTab = Color(0xFFE0E0E0)
+private val UnselectedTabOutline = Color(0xFF616161)
+private val UnselectedTabText = Color(0xFF212121)
 
-    fun play(
-        voice: KokoroVoice,
-        quality: VoiceQuality,
-    ) {
-        stop()
-        try {
-            val file = context.assets.openFd(voice.sampleAsset(quality))
-            val next = MediaPlayer()
-            player = next
-            next.setDataSource(file.fileDescriptor, file.startOffset, file.length)
-            file.close()
-            next.setOnPreparedListener { if (player === it) it.start() }
-            next.setOnCompletionListener { if (player === it) stop() }
-            next.setOnErrorListener { failed, _, _ ->
-                if (player === failed) stop()
-                true
-            }
-            next.prepareAsync()
-            onPlayingChanged(voice.id)
-        } catch (e: IOException) {
-            Log.w(TAG, "Cannot play the sample of ${voice.id}", e)
-            stop()
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "Cannot play the sample of ${voice.id}", e)
-            stop()
-        }
-    }
+private val TAB_HEIGHT = 44.dp
+private val TAB_CORNER = 8.dp
+private val SPEAKER_ICON_SIZE = 22.dp
 
-    fun stop() {
-        player?.let {
-            it.setOnCompletionListener(null)
-            it.setOnErrorListener(null)
-            it.release()
-        }
-        player = null
-        onPlayingChanged(null)
-    }
+/** The note under the tabs is always this many lines high, so the list below never moves. */
+private const val NOTE_LINES = 3
 
-    private companion object {
-        const val TAG = "AudioPressVoice"
-    }
-}
+/**
+ * The bottom button takes two lines when it offers a download, so it always keeps room for two: the list above it then keeps
+ * its size whichever quality and voice are chosen.
+ */
+private const val BUTTON_LINES = 2
 
 private val pickerSaver =
     Saver<VoicePicker, List<String>>(
@@ -103,30 +78,6 @@ private val pickerSaver =
             VoicePicker(VoiceQuality.valueOf(saved[0]), saved[1].takeIf { it.isNotEmpty() }?.let(::voiceById))
         },
     )
-
-// Unselected tabs are pure greys (zero saturation); the selected tab is a saturated blue with white text.
-private val SelectedTab = Color(0xFF1565C0)
-private val SelectedOutline = Color(0xFF0D47A1)
-private val UnselectedTab = Color(0xFFE0E0E0)
-private val UnselectedOutline = Color(0xFF616161)
-private val OutlineColor = Color(0xFF455A64)
-
-/** A rounded outline that is dotted ([dotted]) or solid. */
-internal fun Modifier.outline(
-    dotted: Boolean,
-    color: Color = OutlineColor,
-): Modifier =
-    drawBehind {
-        val width = 2.dp.toPx()
-        val effect = if (dotted) PathEffect.dashPathEffect(floatArrayOf(width * 2, width * 2)) else null
-        drawRoundRect(
-            color,
-            topLeft = Offset(width / 2, width / 2),
-            size = Size(size.width - width, size.height - width),
-            cornerRadius = CornerRadius(8.dp.toPx()),
-            style = Stroke(width, pathEffect = effect),
-        )
-    }
 
 /**
  * The screen the Bake button opens: three quality tabs (dotted outline when the model is not downloaded, solid when it
@@ -145,26 +96,23 @@ fun VoiceScreen(
     DisposableEffect(Unit) { onDispose { samples.stop() } }
     val listState = rememberLazyListState() // one list for all tabs, so its position is kept when the tab changes
 
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(Spacing.Medium)) {
         Text("Select model quality", style = MaterialTheme.typography.headlineSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.Small)) {
             for (quality in VoiceQuality.entries) {
-                val selected = quality == picker.quality
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .background(if (selected) SelectedTab else UnselectedTab, RoundedCornerShape(8.dp))
-                        .outline(!session.isModelDownloaded(quality), if (selected) SelectedOutline else UnselectedOutline)
-                        .clickable {
-                            if (!selected) samples.stop()
-                            picker = picker.withQuality(quality)
-                        },
-                    contentAlignment = Alignment.Center,
-                ) { Text(quality.label, color = if (selected) Color.White else Color(0xFF212121)) }
+                QualityTab(
+                    quality,
+                    selected = quality == picker.quality,
+                    downloaded = session.isModelDownloaded(quality),
+                    onClick = {
+                        if (quality != picker.quality) samples.stop()
+                        picker = picker.withQuality(quality)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
-        Text(picker.note, minLines = 3, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp))
+        Text(picker.note, minLines = NOTE_LINES, modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.ExtraSmall))
         LazyColumn(
             state = listState,
             modifier =
@@ -172,19 +120,18 @@ fun VoiceScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .outline(dotted = false)
-                    .padding(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(OutlinedBoxPadding),
+            verticalArrangement = Arrangement.spacedBy(Spacing.ExtraSmall),
         ) {
             items(KOKORO_VOICES, key = { it.id }) { voice ->
-                val selected = picker.voice == voice
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .then(if (selected) Modifier.outline(dotted = false) else Modifier)
+                        .then(if (picker.voice == voice) Modifier.outline(dotted = false) else Modifier)
                         .clickable {
                             picker = picker.withVoice(voice)
                             samples.play(voice, picker.quality)
-                        }.padding(horizontal = 12.dp, vertical = 12.dp),
+                        }.padding(Spacing.Medium),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(voice.label, modifier = Modifier.weight(1f))
@@ -192,8 +139,7 @@ fun VoiceScreen(
                 }
             }
         }
-        val downloaded = session.isModelDownloaded(picker.quality)
-        val action = picker.action(downloaded, session.downloadSizeMegabytes(picker.quality))
+        val action = picker.action(session.isModelDownloaded(picker.quality), session.downloadSizeMegabytes(picker.quality))
         Button(
             onClick = {
                 samples.stop()
@@ -201,15 +147,40 @@ fun VoiceScreen(
             },
             enabled = action.enabled,
             modifier = Modifier.fillMaxWidth(),
-        ) { Text(action.text, textAlign = TextAlign.Center) }
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                // An empty text two lines high keeps the room; the label is centred in it.
+                Text("", minLines = BUTTON_LINES, modifier = Modifier.clearAndSetSemantics {})
+                Text(action.text, textAlign = TextAlign.Center)
+            }
+        }
     }
+}
+
+/** One quality tab: filled blue when [selected], grey otherwise; its outline is dotted until the model is [downloaded]. */
+@Composable
+private fun QualityTab(
+    quality: VoiceQuality,
+    selected: Boolean,
+    downloaded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .height(TAB_HEIGHT)
+            .background(if (selected) SelectedTab else UnselectedTab, RoundedCornerShape(TAB_CORNER))
+            .outline(dotted = !downloaded, if (selected) SelectedTabOutline else UnselectedTabOutline)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(quality.label, color = if (selected) SelectedTabText else UnselectedTabText) }
 }
 
 /** A small speaker with sound waves, drawn so no icon library is needed. */
 @Composable
 private fun SpeakerIcon() {
     val color = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(22.dp)) {
+    Canvas(Modifier.size(SPEAKER_ICON_SIZE)) {
         val w = size.width
         val h = size.height
         val body =

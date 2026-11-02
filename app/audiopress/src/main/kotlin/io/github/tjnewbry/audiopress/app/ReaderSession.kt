@@ -65,6 +65,9 @@ class ReaderSession(
     private var liveSpeed = speed
     private var savedSpeed = speed
 
+    /** When live speech reached its current word, for the smooth position between the engine's word reports. */
+    private val wordClock = WordClock()
+
     private var livePlayer: ReaderPlayer? = null
     private var bakedPlayer: BakedPlayer? = null
     private var switcher: SwitchingPlayback? = null
@@ -87,7 +90,7 @@ class ReaderSession(
                 onMeasured = estimator::record,
                 onSave = ::save,
                 onChange = {
-                    noteWordChange(it)
+                    wordClock.note(it, SystemClock.uptimeMillis())
                     if (mode == PlaybackMode.LIVE) player = it
                 },
             )
@@ -97,10 +100,11 @@ class ReaderSession(
         bakedPlayer = if (bake.clips != null) createBakedPlayer(initialPosition) else null
         // Baked audio can be played once the book is baked, or while it is being baked (the clips made so far).
         val switching =
-            SwitchingPlayback(live, { bakedPlayer.takeIf { bake.clips != null || bakeState is BakeState.Baking } }, onModeChange = {
-                mode =
-                    it
-            })
+            SwitchingPlayback(
+                live,
+                baked = { bakedPlayer.takeIf { bake.clips != null || bakeState is BakeState.Baking } },
+                onModeChange = { mode = it },
+            )
         switcher = switching
         mode = switching.mode
         player = switching.state
@@ -109,7 +113,7 @@ class ReaderSession(
             main.post {
                 bakeState = state
                 bakedDurations = durations
-                if (state !is BakeState.Baking && state !is BakeState.Downloading) showProgress = false
+                if (!state.isRunning) showProgress = false
                 if (bakedPlayer == null && state is BakeState.Baked) bakedPlayer = createBakedPlayer(switching.position)
                 bakedPlayer?.onClipsReady() // a clip may have landed that playback is waiting for
                 if (state is BakeState.NotBaked || state is BakeState.Failed) bakedPlayer?.stopWaiting()
@@ -151,32 +155,19 @@ class ReaderSession(
         }
     }
 
-    /** Time before the current point, in milliseconds: the clip's real position in baked mode, else the estimate for the current word. */
-    fun elapsedMs(): Long {
+    /**
+     * Time before the current point at [nowMs] (`SystemClock.uptimeMillis`), in milliseconds: the clip's real position in baked
+     * mode, else the estimate for the current word.
+     */
+    fun elapsedMs(nowMs: Long = SystemClock.uptimeMillis()): Long {
         val timeline = timeline()
         bakedPlayer?.takeIf { mode == PlaybackMode.BAKED }?.let { return timeline.startMs(player.utterance) + it.intoClipMs }
         val utterance = utterances.getOrNull(player.utterance) ?: return 0L
         val wordsBefore = utterance.words.count { it.first < player.wordStart }
         // The speech engine reports each word as it starts, so between reports the position advances at the estimated speed.
-        val since = if (player.status == PlaybackStatus.PLAYING) ((SystemClock.uptimeMillis() - wordChangedAt) * liveSpeed).toLong() else 0L
-        return timeline.elapsedMs(player.utterance, wordsBefore, since, rangesReported)
+        val since = if (player.status == PlaybackStatus.PLAYING) wordClock.sinceMs(nowMs, liveSpeed) else 0L
+        return timeline.elapsedMs(player.utterance, wordsBefore, since, wordClock.rangesReported)
     }
-
-    private var wordChangedAt = 0L
-    private var rangesReported = false
-    private var lastWord: Pair<Int, Int>? = null
-
-    /** Notes when the live player moved to a new word (and whether the engine reports words at all), for the smooth position. */
-    private fun noteWordChange(state: PlayerState) {
-        val word = state.utterance to state.wordStart
-        val previous = lastWord
-        if (word == previous) return
-        rangesReported = previous != null && previous.first == state.utterance && state.status == PlaybackStatus.PLAYING
-        lastWord = word
-        wordChangedAt = SystemClock.uptimeMillis()
-    }
-
-    fun totalMs(): Long = timeline().totalMs
 
     /**
      * Sets the reading speed while the speed slider moves. Baked audio follows at once, also while playing. Live speech has to
@@ -230,8 +221,7 @@ class ReaderSession(
 
     /** A bake ended without finishing while baked audio was in use: carry on in live speech from the same place, paused. */
     private fun leaveBakedAudioIfGone(switching: SwitchingPlayback) {
-        val ended = bakeState !is BakeState.Baking && bakeState !is BakeState.Downloading
-        if (!ended || bake.clips != null || switching.mode != PlaybackMode.BAKED) return
+        if (bakeState.isRunning || bake.clips != null || switching.mode != PlaybackMode.BAKED) return
         val where = bakedPlayer?.position ?: switching.position
         switching.refreshMode()
         switching.seekTo(where, 0, play = false)

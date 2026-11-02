@@ -26,6 +26,12 @@ The Android app that turns PDF books into audiobooks, using the engine to make e
 
 A Gradle build with its own wrapper (`app/gradlew`). `settings.gradle.kts` includes the engine with `includeBuild("../engine")`. The application module is `audiopress/` (named for the product, so the path is not `app/app`); `pdf-source/` (reads PDFs with PdfBox-Android) and `bake/` (turns utterances into audio files) are the engine owner's modules for now. Package `io.github.tjnewbry.audiopress.app`; minSdk 33, compileSdk and targetSdk 36. Versions are in `gradle/libs.versions.toml`.
 
+Inside `audiopress/src/main/kotlin/io/github/tjnewbry/audiopress/app/`:
+
+* **The package root** holds everything that is not drawing: `MainActivity`, the state holders (`LibraryViewModel`, `ReaderSession`), the players, storage, baking, export, the import rules (`ImportRange.kt`), and `Formats.kt` (every size, time and count the screens show).
+* **`ui/`** holds the composables, one file per screen or component. Shared pieces are in `ui/` itself: `AppContent.kt` (which screen shows, and Back), `Theme.kt` (theme, spacing scale, touch-target size, shared colours), `Dialogs.kt`, `Progress.kt`, `Outline.kt`. Each screen has a folder: `library/`, `player/`, `bake/` (voice screen and bake progress), `pdfimport/`, `about/`.
+* Screens and their sections read their state holder directly, so fast-changing state redraws only the part that shows it; small components take plain values and callbacks. Texts built from state are plain functions next to the composable that shows them, and are unit-tested.
+
 ## Commands
 
 Run from `app/`. The engine's build needs JDK 25: the engine's Gradle toolchain finds it through `JAVA_HOME` or downloads it. Create `local.properties` with `sdk.dir=C\:/Users/<you>/AppData/Local/Android/Sdk` (forward slashes).

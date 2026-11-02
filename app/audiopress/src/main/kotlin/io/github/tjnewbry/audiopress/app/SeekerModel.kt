@@ -141,6 +141,46 @@ class BookTimeline(
 }
 
 /**
+ * Times the word live speech is on, so the played position can run on smoothly between the speech engine's word reports.
+ * [note] is told every state of the live player, with the time; [sinceMs] is how long the current word has been playing.
+ */
+class WordClock {
+    private var lastWord: Pair<Int, Int>? = null
+    private var lastStatus = PlaybackStatus.STOPPED
+    private var changedAt = 0L
+
+    /**
+     * True when the engine reports words (the word moved on inside one line while playing), so the next report will correct
+     * the position; false before the first report of a line, or with an engine that does not report words.
+     */
+    var rangesReported: Boolean = false
+        private set
+
+    fun note(
+        state: PlayerState,
+        nowMs: Long,
+    ) {
+        val word = state.utterance to state.wordStart
+        val previous = lastWord
+        val resumed = state.status == PlaybackStatus.PLAYING && lastStatus != PlaybackStatus.PLAYING
+        lastStatus = state.status
+        if (word != previous) {
+            rangesReported = previous != null && previous.first == state.utterance && state.status == PlaybackStatus.PLAYING
+            lastWord = word
+            changedAt = nowMs
+        } else if (resumed) {
+            changedAt = nowMs // playing again from the same word: its time starts now, not when it was first reported
+        }
+    }
+
+    /** How long, in book time at [speed], the current word has been playing at [nowMs]. */
+    fun sinceMs(
+        nowMs: Long,
+        speed: Float,
+    ): Long = ((nowMs - changedAt) * speed).toLong().coerceAtLeast(0L)
+}
+
+/**
  * Whether the text box follows the line being read. It starts locked: the box scrolls with the player. The user
  * scrolling by hand unlocks it, which shows the scroll arrow and the "Return to player position" button; returning
  * (or tapping a line, or seeking) locks it again.
@@ -175,7 +215,7 @@ fun playerStatusText(
     totalMs: Long,
 ): String {
     val times = "${formatDuration(elapsedMs / MS_PER_SECOND)} / ${formatDuration(totalMs / MS_PER_SECOND)}"
-    val baking = bake is BakeState.Baking || bake is BakeState.Downloading
+    val baking = bake.isRunning
     return when {
         mode == PlaybackMode.BAKED && waiting && baking -> "Waiting for audio…"
         mode == PlaybackMode.BAKED && baking -> "$times (listening while baking)"

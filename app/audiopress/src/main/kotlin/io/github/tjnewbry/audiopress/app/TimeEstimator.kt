@@ -51,12 +51,3 @@ class TimeEstimator(
         private const val MAX_WPM = 500.0
     }
 }
-
-/** `1:05` for 65 seconds, and `1:02:03` once an hour or more. */
-fun formatDuration(seconds: Double): String {
-    val total = seconds.toLong().coerceAtLeast(0)
-    val hours = total / 3600
-    val minutes = total % 3600 / 60
-    val secs = total % 60
-    return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, secs) else "%d:%02d".format(minutes, secs)
-}

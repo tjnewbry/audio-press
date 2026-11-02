@@ -1,5 +1,7 @@
 package io.github.tjnewbry.audiopress.app
 
+import io.github.tjnewbry.audiopress.app.ui.player.barScale
+import io.github.tjnewbry.audiopress.app.ui.player.dotPositions
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
