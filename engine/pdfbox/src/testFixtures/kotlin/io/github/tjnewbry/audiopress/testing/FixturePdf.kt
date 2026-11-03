@@ -1,9 +1,11 @@
 package io.github.tjnewbry.audiopress.testing
 
+import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
+import org.apache.pdfbox.pdmodel.common.PDStream
 import org.apache.pdfbox.pdmodel.font.PDType1Font
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts
 import org.apache.pdfbox.util.Matrix
@@ -42,6 +44,7 @@ class FixturePage(
     val height: Float,
 ) {
     private val operations = mutableListOf<(PDPageContentStream) -> Unit>()
+    private lateinit var document: PDDocument
 
     /**
      * Draws [text] starting [x] points from the left, with its baseline [y] points from the top, raised by
@@ -63,6 +66,53 @@ class FixturePage(
             stream.endText()
         }
         return x + FONT.getStringWidth(text) / 1000f * size
+    }
+
+    /**
+     * Draws [text] letter-spaced: [tracking] extra points after every glyph (`Tc`), as designers set headings,
+     * spaced capitals, and some body text. Position is as for [text].
+     */
+    fun trackedText(
+        text: String,
+        x: Float,
+        y: Float,
+        size: Float = 11f,
+        tracking: Float = 1f,
+    ) {
+        operations += { stream ->
+            stream.beginText()
+            stream.setFont(FONT, size)
+            stream.setCharacterSpacing(tracking)
+            stream.newLineAtOffset(x, height - y)
+            stream.showText(text)
+            stream.setCharacterSpacing(0f)
+            stream.endText()
+        }
+    }
+
+    /**
+     * Draws one glyph at ([x], [y]) whose text is the control character BEL (U+0007), in a second font. Some layout
+     * programs leave such invisible marks after list bullets, on top of the next word's first letter.
+     */
+    fun controlMark(
+        x: Float,
+        y: Float,
+        size: Float = 11f,
+    ) {
+        operations += { stream ->
+            val font = PDType1Font(Standard14Fonts.FontName.TIMES_ITALIC)
+            val cmap =
+                "/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /Mark def " +
+                    "1 begincodespacerange <00> <FF> endcodespacerange 1 beginbfchar <7C> <0007> endbfchar " +
+                    "endcmap CMapName currentdict /CMap defineresource pop end end"
+            val toUnicode = PDStream(document, cmap.byteInputStream())
+            font.cosObject.setItem(COSName.TO_UNICODE, toUnicode)
+            stream.beginText()
+            stream.setFont(font, size)
+            stream.newLineAtOffset(x, height - y)
+            stream.showText("|")
+            stream.endText()
+        }
     }
 
     /**
@@ -134,6 +184,7 @@ class FixturePage(
     }
 
     internal fun render(document: PDDocument) {
+        this.document = document
         val page = PDPage(PDRectangle(width, height))
         document.addPage(page)
         PDPageContentStream(document, page).use { stream -> operations.forEach { it(stream) } }

@@ -199,9 +199,14 @@ object Assembler {
             val hyphenAfterLetter = end in HYPHENS && last.length > 1 && last[last.length - 2].isLetter()
             when {
                 end == TextNormalizer.SOFT_HYPHEN -> replaceLast(last.dropLast(1) + text, span)
+
                 hyphenAfterLetter && text.first().isLowerCase() -> replaceLast(last.dropLast(1) + text, span)
+
                 hyphenAfterLetter -> replaceLast(last + text, span)
-                end in DASHES -> tokens += Token(text, spaceBefore = false, spans = listOf(span))
+
+                // A dash attached to its word ("night—") joins the next line directly; a spaced dash ("night –") keeps the space.
+                end in DASHES && last.length > 1 -> tokens += Token(text, spaceBefore = false, spans = listOf(span))
+
                 else -> tokens += Token(text, spaceBefore = true, spans = listOf(span))
             }
         }

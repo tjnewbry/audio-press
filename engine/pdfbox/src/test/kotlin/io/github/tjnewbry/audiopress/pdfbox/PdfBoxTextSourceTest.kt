@@ -7,6 +7,7 @@ import io.github.tjnewbry.audiopress.core.InputNotFoundException
 import io.github.tjnewbry.audiopress.core.InvalidPageRangeException
 import io.github.tjnewbry.audiopress.core.NotAPdfException
 import io.github.tjnewbry.audiopress.core.PdfEncryptedException
+import io.github.tjnewbry.audiopress.testing.FixturePage
 import io.github.tjnewbry.audiopress.testing.FixturePdf
 import io.github.tjnewbry.audiopress.testing.fixturePdf
 import org.apache.pdfbox.pdmodel.common.PDMetadata
@@ -76,6 +77,123 @@ class PdfBoxTextSourceTest {
         val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
 
         assertEquals(listOf("CHAPTER"), words.map { it.text })
+    }
+
+    @Test
+    fun `keeps letter-spaced words whole where PDFBox would break them after narrow letters`() {
+        val pdf =
+            fixturePdf(dir.resolve("tracked.pdf")) {
+                page { trackedText("Questions about little details still follow", x = 72f, y = 100f, size = 10f, tracking = 1f) }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("Questions", "about", "little", "details", "still", "follow"), words.map { it.text })
+        assertTrue(words.none { it.joinsPrevious })
+    }
+
+    @Test
+    fun `reads spaced capitals as whole words, not single letters`() {
+        val pdf =
+            fixturePdf(dir.resolve("spaced-caps.pdf")) {
+                page { trackedText("THE LIGHTHOUSE KEEPER", x = 72f, y = 100f, size = 12f, tracking = 2f) }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("THE", "LIGHTHOUSE", "KEEPER"), words.map { it.text })
+        assertEquals(72f, words.first().box.left, TOLERANCE)
+    }
+
+    @Test
+    fun `keeps letter-spaced words apart when the PDF has no space glyph between them`() {
+        val size = 10f
+        val tracking = 1f
+        val space = FixturePage.FONT.getStringWidth(" ") / 1000f * size
+        val pdf =
+            fixturePdf(dir.resolve("tracked-words.pdf")) {
+                page {
+                    var x = 72f
+                    for (word in listOf("quiet", "little", "lights")) {
+                        trackedText(word, x = x, y = 100f, size = size, tracking = tracking)
+                        x += FixturePage.FONT.getStringWidth(word) / 1000f * size + word.length * tracking + space
+                    }
+                }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("quiet", "little", "lights"), words.map { it.text })
+    }
+
+    @Test
+    fun `a formula set with even gaps around its symbols is not joined into one word`() {
+        val pdf =
+            fixturePdf(dir.resolve("formula.pdf")) {
+                page {
+                    var x = 72f
+                    for (glyph in listOf("2", "y", "=", "x", "+", "1", "2")) {
+                        val end = text(glyph, x = x, y = 100f, size = 10f)
+                        x = if ((glyph == "2" && x == 72f) || glyph == "1") end else end + 2.5f
+                    }
+                }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("2y", "=", "x", "+", "12"), words.map { it.text })
+    }
+
+    @Test
+    fun `single letters at uneven gaps are not taken for letter-spaced text`() {
+        val pdf =
+            fixturePdf(dir.resolve("uneven.pdf")) {
+                page {
+                    var x = 72f
+                    for ((letter, gap) in listOf("a" to 1.5f, "b" to 2.8f, "c" to 2f, "d" to 3.3f, "e" to 0f)) {
+                        x = text(letter, x = x, y = 100f, size = 10f) + gap
+                    }
+                }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("a", "b", "c", "d", "e"), words.map { it.text })
+    }
+
+    @Test
+    fun `an invisible control-character glyph on a letter does not split the word`() {
+        val pdf =
+            fixturePdf(dir.resolve("control-mark.pdf")) {
+                page {
+                    trackedText("Harbor lights shone", x = 72f, y = 100f, size = 10f, tracking = 0.6f)
+                    controlMark(x = 72f, y = 100f, size = 10f)
+                    // A kerned pair: the second letter starts a little before the first one ends.
+                    trackedText("P", x = 72f, y = 120f, size = 10f, tracking = 0.6f)
+                    controlMark(x = 72f, y = 120f, size = 10f)
+                    val kerned = 72f + FixturePage.FONT.getStringWidth("P") / 1000f * 10f - 0.1f
+                    trackedText("ottery was made", x = kerned, y = 120f, size = 10f, tracking = 0.6f)
+                }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("Harbor", "lights", "shone", "Pottery", "was", "made"), words.map { it.text })
+    }
+
+    @Test
+    fun `leaves words of ordinary text apart even when the gap between them is small`() {
+        val pdf =
+            fixturePdf(dir.resolve("close.pdf")) {
+                page {
+                    val end = text("still in", x = 72f, y = 100f, size = 10f)
+                    text("it", x = end + 1f, y = 100f, size = 10f)
+                }
+            }
+
+        val words = PdfBoxTextSource.open(pdf).use { it.readPage(1).words }
+
+        assertEquals(listOf("still", "in", "it"), words.map { it.text })
     }
 
     @Test

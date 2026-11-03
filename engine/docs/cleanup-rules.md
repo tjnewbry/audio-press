@@ -28,7 +28,7 @@ The rules run in this order. Each one can see what earlier rules removed.
 | `running-headers` | Running headers and footers, such as the book title on even pages and the chapter title on odd pages, even when a page number is attached. | A line in a zone whose *signature* matches a line in the same zone on another page within 2 pages either side. The signature is the lowercased text with punctuation ignored and digit runs and leading or trailing roman numerals replaced by `#`. It must contain at least 3 letters. |
 | `legal-notices` | Legal and licensing text. | A line in a zone that contains `©`, `copyright`, `all rights reserved`, `downloaded from`, `licensed to`, or `personal use only` (any capitalization). Also, anywhere on the page, a block of small-print lines (below 0.95 × B) that contains `is shared under a`, `licensed under a`, or `creative commons`. |
 | `copyright-page` | The copyright page. | A whole page within the first 10 or last 5 pages of the PDF that contains `all rights reserved`, `ISBN`, or `Library of Congress`. |
-| `contents-and-index` | Tables of contents, lists of figures, and indexes. | A whole page with at least 8 lines, where at least 60% of lines contain at least 4 letters and end with a page reference (a number or roman numeral, after a space or dot leaders, optionally followed by more numbers such as `12, 45-47`). The 4-letter minimum keeps lines of equations such as `y = 2` from counting. |
+| `contents-and-index` | Tables of contents, lists of figures, and indexes. | A whole page with at least 8 lines, where at least 60% of lines contain at least 4 letters and end with a page reference (a number or roman numeral, after a space or dot leaders, optionally followed by more numbers such as `12, 45-47`). The 4-letter minimum keeps lines of equations such as `y = 2` from counting. A line holding only a page number (up to 4 digits, possibly spaced out as `2 8`) is counted with the line before it, for contents pages that put the number under its title. |
 | `footnotes` | Footnote text at the bottom of a page. | The block of consecutive lines at the bottom of the page (after zone lines are removed) whose font size is at most 0.85 × B, as long as the page has body-size text above it. |
 | `footnote-markers` | Footnote reference marks inside sentences. | A superscript word (at most 0.85 × its line's font size, with its baseline raised by at least 0.2 × that size) consisting only of 1 to 3 digits or the symbols `* † ‡ § ¶`. Unicode superscript digits (such as `¹²³`) are removed too; text normalization splits them off the end of a word first. In scanned books, OCR often turns footnote numbers into degree signs and stray marks right after a sentence ends (`flesh.”°`); those are removed as well, while a real degree sign (`30°`) is kept. These scan marks are rewritten in the transcript and are not listed in the report. |
 
@@ -50,7 +50,7 @@ After removals, the remaining lines are joined into paragraphs and headings. The
   * A line ending in a soft hyphen is joined to the next line with no space and no hyphen.
   * A line ending in `-` followed by a line starting with a lowercase letter is joined with no space and the hyphen is removed (`inter-` + `national` becomes `international`). A real compound split at its hyphen (`well-` + `known`) comes out as `wellknown`; telling the two apart is a planned improvement.
   * A line ending in `-` followed by an uppercase letter or digit is joined with no space and the hyphen is kept (`Anglo-` + `Saxon` becomes `Anglo-Saxon`).
-  * A line ending in an en or em dash is joined with no space.
+  * A line ending in an en or em dash attached to its word (`night—`) is joined with no space. A spaced dash standing on its own (`night –`) keeps the space.
 
 ## Token rewrites
 
@@ -67,6 +67,8 @@ Applied to every word as soon as it is extracted, before any rule runs. It canno
 * Invisible characters (zero-width spaces and joiners, byte order marks, control characters) are removed.
 * Soft hyphens are removed, except at the end of a line, where paragraph assembly uses them.
 * Unreadable characters (the replacement character `�` and private-use characters from broken font encodings) are removed.
+
+Before that, the PDF readers (desktop and Android) decide where words start and end. PDFBox splits words where a gap between letters looks wide, which goes wrong in letter-spaced (tracked) text: it breaks words after narrow letters (`Quest ions`) and turns spaced capitals into single letters (`S E C T I O N`). The readers rejoin such breaks when a line's letters in one font are evenly spaced by at least 3% of the font size, the line marks its word gaps with space glyphs (or is a single word in one font), the break is between letters or digits (or a letter and the punctuation after it), and the gap is less than the letter spacing plus half a space. Formulas, whose symbols are evenly spaced but have no space glyphs, are left alone. Glyphs whose text is only control characters, which some layout programs place on the first letter after a list bullet, are ignored so they do not split that word.
 
 ## Not handled in Alpha
 

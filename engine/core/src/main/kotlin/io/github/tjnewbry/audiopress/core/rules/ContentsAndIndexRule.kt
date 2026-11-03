@@ -28,14 +28,36 @@ object ContentsAndIndexRule : CleanupRule {
         removed: Removals,
     ): List<Removal> =
         document.keptPages(removed).mapNotNull { page ->
-            val lines = page.keptLines(removed).filter { it.horizontal }
-            val entries = lines.count { isEntry(it.text) }
+            val lines = entryTexts(page.keptLines(removed).filter { it.horizontal }.map { it.text })
+            val entries = lines.count { isEntry(it) }
             if (lines.size >= MIN_LINES && entries >= MIN_SHARE * lines.size) {
                 Removal(id, PageTarget(page.index), "", "$entries of ${lines.size} lines end in a page number")
             } else {
                 null
             }
         }
+
+    /** A line holding only a page number, possibly letter-spaced (`2 8`). */
+    private val PAGE_NUMBER_ONLY = Regex("""^\s*[0-9](?:\s?[0-9]){0,3}\s*$""")
+
+    /**
+     * The page's entries: each line, except that a line holding only a page number is joined to the line before it,
+     * for contents pages that set the number under its title. A number after another number stays a line of its own.
+     */
+    private fun entryTexts(lines: List<String>): List<String> {
+        val entries = mutableListOf<String>()
+        for (text in lines) {
+            val previous = entries.lastOrNull()
+            if (previous != null && PAGE_NUMBER_ONLY.matches(text) && previous.any { it.isLetter() } &&
+                !PAGE_REFERENCE.containsMatchIn(previous)
+            ) {
+                entries[entries.lastIndex] = "$previous $text"
+            } else {
+                entries += text
+            }
+        }
+        return entries
+    }
 
     private fun isEntry(text: String): Boolean = text.count { it.isLetter() } >= MIN_LETTERS && PAGE_REFERENCE.containsMatchIn(text)
 }

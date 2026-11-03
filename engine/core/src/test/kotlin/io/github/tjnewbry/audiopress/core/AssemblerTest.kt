@@ -114,6 +114,23 @@ class AssemblerTest {
     }
 
     @Test
+    fun `a spaced dash at the end of a line keeps the space after it`() {
+        val enDash = Char(0x2013)
+        val document =
+            layout {
+                page {
+                    line("The keeper climbed the stair every night $enDash", y = 120f, right = RIGHT)
+                    line("even in winter $enDash and lit the lamp.", y = 134f)
+                }
+            }
+
+        assertEquals(
+            listOf("The keeper climbed the stair every night $enDash even in winter $enDash and lit the lamp."),
+            paragraphs(document),
+        )
+    }
+
+    @Test
     fun `a paragraph continues onto the next page, keeping both spans of a hyphenated word`() {
         val document =
             layout {

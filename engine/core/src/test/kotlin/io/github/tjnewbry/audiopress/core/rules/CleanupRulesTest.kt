@@ -210,6 +210,29 @@ class CleanupRulesTest {
     }
 
     @Test
+    fun `contents-and-index skips a contents page that sets each page number on the line under its title`() {
+        val document =
+            layout {
+                page {
+                    for (i in 0 until 9) {
+                        line("THE KEEPER'S ${i + 1}TH NIGHT", y = 80f + i * 50f, x = 150f)
+                        line("${i * 12 + 4}", y = 94f + i * 50f, x = 200f)
+                    }
+                }
+                page {
+                    // A table of years: number lines after number lines are not entries.
+                    for (i in 0 until 12) line("${1900 + i * 10}", y = 100f + i * 14f, x = 200f)
+                }
+                page {
+                    body(9)
+                    line("12", y = 400f, x = 200f)
+                }
+            }
+
+        assertEquals(listOf(PageTarget(1)), ContentsAndIndexRule.apply(document, Removals.NONE).map { it.target })
+    }
+
+    @Test
     fun `footnotes removes small print at the bottom of a page with body text above`() {
         val document =
             layout {
