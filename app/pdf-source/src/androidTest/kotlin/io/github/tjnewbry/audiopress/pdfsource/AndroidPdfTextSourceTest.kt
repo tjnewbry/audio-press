@@ -105,6 +105,86 @@ class AndroidPdfTextSourceTest {
     }
 
     @Test
+    fun keepsLetterSpacedWordsWholeWherePdfBoxWouldBreakThemAfterNarrowLetters() {
+        val file =
+            pdf("tracked.pdf") {
+                page { trackedText("Questions about little details still follow", x = 72f, y = 100f, size = 10f, tracking = 1f) }
+            }
+
+        val words = AndroidPdfTextSource.open(context, file).use { it.readPage(1).words }
+
+        assertEquals(listOf("Questions", "about", "little", "details", "still", "follow"), words.map { it.text })
+        assertTrue(words.none { it.joinsPrevious })
+    }
+
+    @Test
+    fun readsSpacedCapitalsAsWholeWordsNotSingleLetters() {
+        val file =
+            pdf("spaced-caps.pdf") {
+                page { trackedText("THE LIGHTHOUSE KEEPER", x = 72f, y = 100f, size = 12f, tracking = 2f) }
+            }
+
+        val words = AndroidPdfTextSource.open(context, file).use { it.readPage(1).words }
+
+        assertEquals(listOf("THE", "LIGHTHOUSE", "KEEPER"), words.map { it.text })
+    }
+
+    @Test
+    fun keepsLetterSpacedWordsApartWhenThePdfHasNoSpaceGlyphBetweenThem() {
+        val size = 10f
+        val tracking = 1f
+        val space = FixturePage.width(" ", size)
+        val file =
+            pdf("tracked-words.pdf") {
+                page {
+                    var x = 72f
+                    for (word in listOf("quiet", "little", "lights")) {
+                        trackedText(word, x = x, y = 100f, size = size, tracking = tracking)
+                        x += FixturePage.width(word, size) + word.length * tracking + space
+                    }
+                }
+            }
+
+        val words = AndroidPdfTextSource.open(context, file).use { it.readPage(1).words }
+
+        assertEquals(listOf("quiet", "little", "lights"), words.map { it.text })
+    }
+
+    @Test
+    fun anInvisibleControlCharacterGlyphOnALetterDoesNotSplitTheWord() {
+        val file =
+            pdf("control-mark.pdf") {
+                page {
+                    trackedText("Harbor lights shone", x = 72f, y = 100f, size = 10f, tracking = 0.6f)
+                    controlMark(x = 72f, y = 100f, size = 10f)
+                    // A kerned pair: the second letter starts a little before the first one ends.
+                    trackedText("P", x = 72f, y = 120f, size = 10f, tracking = 0.6f)
+                    controlMark(x = 72f, y = 120f, size = 10f)
+                    trackedText("ottery was made", x = 72f + FixturePage.width("P", 10f) - 0.1f, y = 120f, size = 10f, tracking = 0.6f)
+                }
+            }
+
+        val words = AndroidPdfTextSource.open(context, file).use { it.readPage(1).words }
+
+        assertEquals(listOf("Harbor", "lights", "shone", "Pottery", "was", "made"), words.map { it.text })
+    }
+
+    @Test
+    fun leavesWordsOfOrdinaryTextApartEvenWhenTheGapBetweenThemIsSmall() {
+        val file =
+            pdf("close.pdf") {
+                page {
+                    val end = text("still in", x = 72f, y = 100f, size = 10f)
+                    text("it", x = end + 1f, y = 100f, size = 10f)
+                }
+            }
+
+        val words = AndroidPdfTextSource.open(context, file).use { it.readPage(1).words }
+
+        assertEquals(listOf("still", "in", "it"), words.map { it.text })
+    }
+
+    @Test
     fun marksRotatedTextAsNotHorizontal() {
         val file =
             pdf("rotated.pdf") {

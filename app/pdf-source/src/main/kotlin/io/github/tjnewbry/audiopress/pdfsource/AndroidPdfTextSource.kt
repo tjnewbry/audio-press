@@ -319,12 +319,24 @@ class AndroidPdfTextSource private constructor(
 }
 
 /**
- * Collects positioned words from one page at a time. PDFBox decides where words start and end; this
- * class additionally splits a word where its baseline shifts, so superscripts (footnote markers) and
- * subscripts become separate words that join the previous one. Same logic as the desktop adapter.
+ * Collects positioned words from one page at a time. PDFBox decides where words start and end, with two
+ * corrections:
+ *
+ * * **Letter-spaced text.** PDFBox starts a new word wherever a gap is wider than a share of the previous
+ *   glyph's width, so in text set with extra space between letters (tracking) it breaks words after narrow
+ *   letters ("Quest ions") and splits spaced capitals into single letters ("S E C T I O N"). Where a line's
+ *   letters are evenly spaced out, a gap no wider than that spacing plus half a space is rejoined; real
+ *   word gaps, which have a space glyph or a full space more, stay. See [joinTrackedWords].
+ * * **Baseline shifts.** A word is split where its baseline shifts, so superscripts (footnote markers) and
+ *   subscripts become separate words that join the previous one.
+ *
+ * Same logic as the desktop adapter.
  */
 private class WordCollector : PDFTextStripper() {
     private val words = mutableListOf<SourceWord>()
+
+    /** PDFBox's words on the line being written, turned into words at each line end. */
+    private val line = mutableListOf<List<TextPosition>>()
 
     init {
         sortByPosition = true
@@ -335,9 +347,11 @@ private class WordCollector : PDFTextStripper() {
         pageIndex: Int,
     ): List<SourceWord> {
         words.clear()
+        line.clear()
         startPage = pageIndex
         endPage = pageIndex
         getText(document)
+        endLine()
         return words.toList()
     }
 
@@ -345,6 +359,109 @@ private class WordCollector : PDFTextStripper() {
         text: String,
         textPositions: List<TextPosition>,
     ) {
+        // A glyph whose text is empty or only control characters (an invisible mark, such as the BEL some layout
+        // programs put after a list bullet) carries no text, and must not split the word it sits in.
+        val glyphs = textPositions.filterNot { position -> position.unicode.all { it.isISOControl() && !it.isWhitespace() } }
+        if (glyphs.isNotEmpty()) line += glyphs
+    }
+
+    override fun writeLineSeparator() {
+        endLine()
+        super.writeLineSeparator()
+    }
+
+    override fun writeParagraphEnd() {
+        endLine()
+        super.writeParagraphEnd()
+    }
+
+    override fun endArticle() {
+        endLine()
+        super.endArticle()
+    }
+
+    override fun writePageEnd() {
+        endLine()
+        super.writePageEnd()
+    }
+
+    private fun endLine() {
+        if (line.isEmpty()) return
+        joinTrackedWords(line).forEach(::split)
+        line.clear()
+    }
+
+    /**
+     * Rejoins words that PDFBox split inside letter-spaced text. Letter spacing is the median gap between a line's
+     * neighbouring glyphs of one font and size (gaps at a space glyph are not counted). It is tracking only where
+     * it is at least [MIN_TRACKING] of the font size, most gaps ([MIN_EVEN_SHARE]) are within [MAX_SPREAD] of it,
+     * and the line either marks its word gaps with space glyphs or is a single word in one font. That leaves out
+     * formulas, whose evenly spaced symbols have no space glyphs between them. Then a break between two glyphs of
+     * that font with no space glyph is rejoined if it is between letters or digits (or a letter and the punctuation
+     * after it) and the gap exceeds the spacing by less than [SPACING_TOLERANCE] of a space. Other lines are left
+     * exactly as PDFBox split them.
+     */
+    private fun joinTrackedWords(pieces: List<List<TextPosition>>): List<List<TextPosition>> {
+        if (pieces.size < 2) return pieces
+        val glyphs = pieces.flatten()
+        val hasSpaces = glyphs.any { it.unicode.isBlank() }
+        val oneWord = glyphs.all { it.unicode.all(Char::isLetter) && style(it) == style(glyphs.first()) }
+        if (!hasSpaces && !oneWord) return pieces
+        val tracking =
+            glyphs
+                .zipWithNext()
+                .filter { (a, b) -> sameStyle(a, b) && !a.unicode.isBlank() && !b.unicode.isBlank() }
+                .groupBy({ (a, _) -> style(a) }, { (a, b) -> gap(a, b) })
+                .mapNotNull { (style, gaps) -> trackingOf(gaps, style.second)?.let { style to it } }
+                .toMap()
+        val joined = mutableListOf(pieces.first().toMutableList())
+        for (piece in pieces.drop(1)) {
+            val a = joined.last().last()
+            val b = piece.first()
+            val spacing = tracking[style(a)]
+            val space = b.widthOfSpace
+            val joins =
+                spacing != null &&
+                    sameStyle(a, b) &&
+                    wordInside(a.unicode.last(), b.unicode.first()) &&
+                    space > 0f &&
+                    gap(a, b) > -MAX_KERN * size(a) &&
+                    gap(a, b) < spacing + SPACING_TOLERANCE * space
+            if (joins) joined.last() += piece else joined += piece.toMutableList()
+        }
+        return joined
+    }
+
+    /** The letter spacing of a line's [gaps] in one font of [size] points, or null if they do not show tracking. */
+    private fun trackingOf(
+        gaps: List<Float>,
+        size: Float,
+    ): Float? {
+        if (gaps.size < MIN_PAIRS) return null
+        val median = gaps.sorted()[gaps.size / 2]
+        val even = gaps.count { abs(it - median) <= MAX_SPREAD * size }
+        return median.takeIf { it >= MIN_TRACKING * size && even >= MIN_EVEN_SHARE * gaps.size }
+    }
+
+    /** Whether [a] then [b] can be inside one word: letters, digits, apostrophes, and the punctuation that ends a word. */
+    private fun wordInside(
+        a: Char,
+        b: Char,
+    ): Boolean = (a.isLetterOrDigit() || a in APOSTROPHES) && (b.isLetterOrDigit() || b in APOSTROPHES || b in WORD_END)
+
+    private fun style(position: TextPosition): Pair<String?, Float> = position.font?.name to size(position)
+
+    private fun sameStyle(
+        a: TextPosition,
+        b: TextPosition,
+    ): Boolean = style(a) == style(b) && !baselineShifts(a, b)
+
+    private fun gap(
+        a: TextPosition,
+        b: TextPosition,
+    ): Float = b.xDirAdj - (a.xDirAdj + a.widthDirAdj)
+
+    private fun split(textPositions: List<TextPosition>) {
         var run = mutableListOf<TextPosition>()
         var joinsPrevious = false
         for (position in textPositions) {
@@ -422,6 +539,28 @@ private class WordCollector : PDFTextStripper() {
     private companion object {
         /** A baseline shift larger than this share of the font size starts a new word (a superscript or subscript). */
         const val BASELINE_SHIFT = 0.15f
+
+        /** Letter spacing below this share of the font size is not tracking, so the line is left as PDFBox split it. */
+        const val MIN_TRACKING = 0.03f
+
+        /** A gap may exceed the letter spacing by less than this share of a space and still be inside a word, as in PDFBox. */
+        const val SPACING_TOLERANCE = 0.5f
+
+        /** The fewest glyph pairs in one font and size needed to measure a line's letter spacing. */
+        const val MIN_PAIRS = 3
+
+        /** Kerning can pull a letter back over the previous one by up to this share of the font size, and still be in the word. */
+        const val MAX_KERN = 0.2f
+
+        /** In tracked text, at least [MIN_EVEN_SHARE] of the gaps are within this share of the font size of the median. */
+        const val MAX_SPREAD = 0.03f
+        const val MIN_EVEN_SHARE = 0.6f
+
+        /** Apostrophes, which can sit inside a word. */
+        val APOSTROPHES = setOf('\'', Char(0x2019))
+
+        /** Punctuation that can end a word with no space before it. */
+        val WORD_END = setOf('.', ',', ';', ':', '!', '?', ')', Char(0x201D))
 
         /** Approximate ascent and descent as shares of the font size, used for word boxes until Bravo needs exact ones. */
         const val ASCENT = 0.8f
