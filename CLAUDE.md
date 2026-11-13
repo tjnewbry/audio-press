@@ -5,7 +5,7 @@ Audio Press turns PDF books into clean text for text-to-speech, and is meant to 
 | Folder | What it is | Owner | Read first |
 |--------|-----------|-------|------------|
 | `engine/` | The PDF-to-transcript engine and command-line program (Kotlin). Self-contained; Milestone Alpha is done. | Engine owner | [engine/CLAUDE.md](engine/CLAUDE.md) |
-| `app/` | The Android app. Prototype built (sprints A1 to A5), awaiting the owner's check on a phone; goal and scope in [app/docs/objective-and-scope.md](app/docs/objective-and-scope.md). | App developer | [app/CLAUDE.md](app/CLAUDE.md) |
+| `app/` | The Android app, version 1.0.0 (sprints A1 to A6 and later polish); goal and scope in [app/docs/objective-and-scope.md](app/docs/objective-and-scope.md). Releases with a version number tjnewbry gives go to GitHub releases. | App developer | [app/CLAUDE.md](app/CLAUDE.md) |
 | `app/pdf-source/`, `app/bake/` | The Android PDF reader, which implements the engine's `TextSource`, and the Bake module, which turns transcripts into audio files. Part of the app's build. | Engine owner | [app/CLAUDE.md](app/CLAUDE.md) |
 | Root files (`README.md`, `CLAUDE.md`, `.gitignore`, `.gitattributes`, `.editorconfig`, `LICENSE`, `.github/`) | Shared by both | The main session, or whoever tjnewbry assigns | This file |
 
