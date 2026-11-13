@@ -1,11 +1,11 @@
 # App: Instructions for Claude
 
-The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: sprints A1 to A5 are built (the owner's check on a real phone with real books is outstanding); sprint A6, Kokoro voices for Bake, is in progress (see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
+The Android app that turns PDF books into audiobooks, using the engine to make each PDF's transcript and Android's `TextToSpeech` to speak it. **Status: the app is at version 1.0.0 (prototype sprints A1 to A6 are done, with later polish since; see the sprint table).** The goal, features, decisions, definition of done, and sprints are in [docs/objective-and-scope.md](docs/objective-and-scope.md). Build exactly those features.
 
 ## Ownership
 
 * **`app/pdf-source/`** (the Android PDF reader, which implements the engine's `TextSource`) belongs to the engine owner.
-* **`app/bake/`** (Bake: synthesizes utterances to audio files with `TextToSpeech`, writes the manifest, and maps playback positions to utterances; no UI) belongs to the engine owner for now. The app developer adds the Bake button and baked playback in `app/audiopress` through its public API (`BookBaker`, `BakedBook`).
+* **`app/bake/`** (Bake: synthesizes utterances to audio files with the Kokoro voices through ONNX Runtime, writes the manifest, and maps playback positions to utterances; no UI) belongs to the engine owner for now. The app developer adds the Bake button and baked playback in `app/audiopress` through its public API (`BookBaker`, `BakedBook`).
 * **Everything else in `app/`** belongs to the app developer.
 * **`engine/`** is never edited from here. The API the app may use is [engine/docs/api.md](../engine/docs/api.md). Ask the engine owner for engine changes (or open a GitHub issue labeled `engine`); never copy or patch engine code to work around its API.
 

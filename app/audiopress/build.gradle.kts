@@ -11,8 +11,9 @@ android {
         applicationId = "io.github.tjnewbry.audiopress.app"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        // versionCode = major * 10000 + minor * 100 + patch, so later releases keep increasing.
+        versionCode = 10000
+        versionName = "1.0.0"
 
         // onnxruntime ships native libraries for four ABIs; keep the phone (arm64) and the emulator (x86_64).
         ndk {
@@ -23,6 +24,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // The owner decided the public release is signed with the same key as the local builds (the Android
+            // debug keystore on their machine), so release installs update over existing installs. No key or
+            // password is committed.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -80,6 +85,9 @@ abstract class GenerateNotices : DefaultTask() {
     @get:InputDirectory
     abstract val licenseTexts: DirectoryProperty
 
+    @get:InputDirectory
+    abstract val appLicenseTexts: DirectoryProperty
+
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
@@ -101,13 +109,22 @@ abstract class GenerateNotices : DefaultTask() {
                         .readText()
                         .trim(),
                 ).append("\n\n")
-                licenseTexts.get().asFile.listFiles { f -> f.extension == "txt" }.orEmpty().sortedBy { it.name }.forEach {
-                    append("----\n\n")
-                        .append(it.name.removeSuffix(".txt"))
-                        .append("\n\n")
-                        .append(it.readText().trim())
-                        .append("\n\n")
-                }
+                listOf(licenseTexts, appLicenseTexts)
+                    .flatMap { dir ->
+                        dir
+                            .get()
+                            .asFile
+                            .listFiles { f -> f.extension == "txt" }
+                            .orEmpty()
+                            .asList()
+                    }.sortedBy { it.name }
+                    .forEach {
+                        append("----\n\n")
+                            .append(it.name.removeSuffix(".txt"))
+                            .append("\n\n")
+                            .append(it.readText().trim())
+                            .append("\n\n")
+                    }
             }
         val target = outputDir.get().asFile
         target.mkdirs()
@@ -120,6 +137,7 @@ val generateNotices =
         appNotices.set(layout.projectDirectory.file("NOTICES.md"))
         bakeNotices.set(layout.projectDirectory.file("../bake/THIRD-PARTY-NOTICES.md"))
         licenseTexts.set(layout.projectDirectory.dir("../bake/licenses"))
+        appLicenseTexts.set(layout.projectDirectory.dir("licenses"))
         outputDir.set(layout.buildDirectory.dir("generated/notices"))
     }
 
