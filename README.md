@@ -1,5 +1,7 @@
 # Audio Press
 
+<img src="app/docs/images/app-icon.png" width="128" alt="The Audio Press app icon: a page of text with a rainbow sound wave across it, on purple">
+
 A Kotlin program that turns a PDF (usually a novel or textbook) into a clean transcript ready for a text-to-speech engine. It strips headers, footers, page numbers, footnotes, legal notices, and formatting artifacts, so the result sounds like an audiobook. An Android app uses the engine to turn a PDF into an audiobook and play it with live captions.
 
 * **lo** output: a readable transcript that records which page each passage came from.
