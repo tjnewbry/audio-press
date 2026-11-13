@@ -12,7 +12,8 @@ import kotlin.test.assertTrue
 
 /**
  * Runs the front end on misaki's real dictionaries. Those files (12.6 MB, Apache-2.0) are not in the repository: the
- * test uses the copies in `local-docs/research/kokoro-sources/` and is skipped when they are not there.
+ * test reads them from the directory named by the `MISAKI_DATA_DIR` environment variable and is skipped when it is unset
+ * or the files are not there.
  */
 class MisakiRealDictionaryTest {
     private val vocab = KokoroVocab.default()
@@ -54,7 +55,6 @@ class MisakiRealDictionaryTest {
             )
         for (text in texts) {
             val ps = say(text)
-            println("$text\n  -> $ps")
             assertTrue(ps.isNotBlank())
             val unknown = ps.filter { it != ' ' && vocab.encode(it.toString()).isEmpty() }
             assertEquals("", unknown, "characters Kokoro does not know in: $ps")
@@ -67,7 +67,6 @@ class MisakiRealDictionaryTest {
     @Test
     fun `an unknown name is spelled out letter by letter when there is no model`() {
         val ps = say("Okonkwo")
-        println("Okonkwo -> $ps")
         assertTrue(ps.split(' ').size >= 5, ps)
     }
 
@@ -75,7 +74,6 @@ class MisakiRealDictionaryTest {
     fun `British voices use the British dictionaries`() {
         val us = say("water")
         val gb = say("water", george)
-        println("water US: $us  GB: $gb")
         assertTrue(us.isNotBlank() && gb.isNotBlank())
         assertEquals(KokoroAccent.BRITISH, george.accent)
     }
@@ -84,12 +82,11 @@ class MisakiRealDictionaryTest {
     fun `heteronyms follow the word before when the dictionary has parts of speech`() {
         val noun = say("the record")
         val verb = say("to record")
-        println("the record -> $noun   to record -> $verb")
         assertTrue(noun != verb.replace("tə", "ðə").replace("tʊ", "ðə"))
     }
 
     companion object {
-        private val dataDir = File("../../local-docs/research/kokoro-sources/misaki/misaki/data")
+        private val dataDir: File? = System.getenv("MISAKI_DATA_DIR")?.takeIf { it.isNotBlank() }?.let(::File)
         private lateinit var usGold: MisakiDictionary
         private lateinit var usSilver: MisakiDictionary
         private lateinit var phonemizer: MisakiEnglishPhonemizer
@@ -97,7 +94,8 @@ class MisakiRealDictionaryTest {
         @BeforeClass
         @JvmStatic
         fun load() {
-            assumeTrue("misaki dictionaries not found in ${dataDir.absolutePath}", File(dataDir, "us_gold.json").isFile)
+            assumeTrue("misaki dictionaries not available", dataDir != null && File(dataDir, "us_gold.json").isFile)
+            val dataDir = dataDir!!
             usGold = MisakiDictionary.load(File(dataDir, "us_gold.json"))
             usSilver = MisakiDictionary.load(File(dataDir, "us_silver.json"))
             val gbGold = MisakiDictionary.load(File(dataDir, "gb_gold.json"))

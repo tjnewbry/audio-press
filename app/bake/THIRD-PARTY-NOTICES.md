@@ -1,6 +1,6 @@
 # Third-party notices for `app/bake`
 
-Bake turns text into speech with Kokoro, entirely on the phone. It uses the following works. All are under permissive licences (Apache-2.0 or MIT); no GPL or LGPL code or data is used. The app's own licence screen should list these (the app owner adds the aggregated list).
+Bake turns text into speech with Kokoro, entirely on the phone. It uses the following works. All are under permissive licences (Apache-2.0 or MIT); no GPL or LGPL code or data is used. The app merges this file into its in-app Licences screen.
 
 | Work | Licence | How it is used | Source and revision |
 |------|---------|----------------|---------------------|

@@ -19,7 +19,7 @@ Work so far:
 | 2. Foundation and extraction | The Gradle build, the data model, PDF reading with PDFBox, text normalization, line building, the command-line skeleton, and the test-PDF generator. | Done |
 | 3. Cleanup, assembly, and lo output | Document measurements, all cleanup rules, paragraph assembly, URL rewriting, the lo writer, `--report`, and end-to-end golden tests. | Done |
 | 4. Hardening and Alpha release | Tuning against real books, error handling, the README, and version 0.1.0. | Done |
-| 5. Restructure for the app | The engine moved into `engine/` and split into `core`, `pdfbox`, and `cli` modules so the app can use `core` as a library. No behavior change. | Done, awaiting owner review |
+| 5. Restructure for the app | The engine moved into `engine/` and split into `core`, `pdfbox`, and `cli` modules so the app can use `core` as a library. No behavior change. | Done |
 
 ## Milestone Alpha: Definition of Done
 
@@ -58,4 +58,4 @@ The app prototype needed a few things from the engine. None of them change the A
 | `TextSource.title` | The document title (information dictionary, then XMP), cleaned of placeholders such as "Untitled", for the library screen. |
 | Bake groundwork | `app/bake` turns utterances (or plain `BakeItem`s) into resumable WAV files and a manifest; no engine change. |
 | Letter-spaced text (a book the owner imported) | Both PDF readers rejoin words that PDFBox split inside letter-spaced (tracked) text, such as `Quest ions` and `S E C T I O N`, and ignore invisible control-character glyphs that split words after list bullets. Spaced dashes at line ends keep their space, and contents pages that put each page number under its title are skipped. Golden tests unchanged; books imported earlier must be re-imported to benefit. |
-| Large books (in progress, sprint A5) | Measured memory on the emulator, shared word strings to cut layout memory by about a fifth, a `TextSource` that is no longer used after reading so it can be closed early, and the figures in [api.md](api.md#memory). Streaming or windowed layout is the next step if a larger limit is needed, and would be a larger change. |
+| Large books (done, sprint A5) | Measured memory on the emulator, shared word strings to cut layout memory by about a fifth, a `TextSource` that is no longer used after reading so it can be closed early, and the figures in [api.md](api.md#memory). Streaming or windowed layout is the next step if a larger limit is needed, and would be a larger change. |
